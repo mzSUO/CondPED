@@ -1,0 +1,28 @@
+{
+    "r.rterm.linux": "/usr/bin/R",
+    "r.rpath.linux": "/usr/bin/R",
+    "r.lsp.enabled": true,
+    "r.alwaysUseActiveTerminal": true,
+    "r.bracketedPaste": true,
+    "files.associations": {
+        "*.R": "r",
+        "*.Rmd": "rmd"
+    },
+    "editor.formatOnSave": false,
+    "editor.rulers": [
+        80
+    ],
+    "[r]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.wordWrap": "on"
+    },
+    "git.autofetch": true,
+    "git.enableSmartCommit": true,
+    "git.confirmSync": false,
+    "files.exclude": {
+        "**/.Rhistory": true,
+        "**/.RData": true,
+        "**/man/*.Rd": true
+    }
+}
