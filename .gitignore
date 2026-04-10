@@ -50,3 +50,33 @@ rsconnect/
 .Rproj.user
 .DS_Store
 .quarto
+
+
+# ========================================
+# CondPED-specific additions
+# ========================================
+
+# Large simulation results 
+*.rds
+data-raw/simulation_results/
+inst/extdata/*.csv
+inst/extdata/*.txt
+
+# VSCode workspace settings
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Compiled code
+src/*.o
+src/*.so
+src/*.dll
+
+# Large data files
+data/*.rda
+data/*.RData
+
+# Temporary analysis scripts
+scratch/
+temp/
