@@ -2,13 +2,7 @@ Package: CondPED
 Type: Package
 Title: Conditional Projection for Decomposing Genetic Effects in Multi-Trait GWAS
 Version: 0.1.0
-Authors@R: c(
-    person(given = "Mingzhe",
-           family = "Suo",
-           email = "suomingzhe1@gmail.com",
-           role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0000-0000-0000"))
-)
+Authors@R: c(person(given = "Mingzhe", family = "Suo", email = "suomingzhe1@gmail.com", role = c("aut", "cre")))
 Description: Provides a conditional projection framework for decomposing SNP effects 
     into independent and shared components in multi-trait genome-wide association 
     studies (GWAS). The method constructs conditional phenotypes via covariance-based 
@@ -31,7 +25,7 @@ Suggests:
     rmarkdown,
     covr
 VignetteBuilder: knitr
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.3
 Roxygen: list(markdown = TRUE)
 URL: https://github.com/mzSUO/CondPED
 BugReports: https://github.com/mzSUO/CondPED/issues
