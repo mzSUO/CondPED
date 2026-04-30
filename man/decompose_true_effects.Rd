@@ -2,12 +2,12 @@
 % Please edit documentation in R/simulate_data.R
 \name{decompose_true_effects}
 \alias{decompose_true_effects}
-\title{Decompose true effects into independent and shared components}
+\title{Decompose True Effects}
 \usage{
 decompose_true_effects(beta, V)
 }
 \arguments{
-\item{beta}{Effect matrix (n_snp x n_trait)}
+\item{beta}{Total effect matrix (n_snp x n_trait)}
 
 \item{V}{Trait covariance matrix (n_trait x n_trait)}
 }
@@ -15,6 +15,7 @@ decompose_true_effects(beta, V)
 List with beta_ind and beta_shared matrices
 }
 \description{
-Decompose true effects into independent and shared components
+Decomposes total genetic effects into independent and shared components
+based on the conditional projection framework.
 }
 \keyword{internal}

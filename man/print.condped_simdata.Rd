@@ -2,10 +2,15 @@
 % Please edit documentation in R/simulate_data.R
 \name{print.condped_simdata}
 \alias{print.condped_simdata}
-\title{Print method for simulated data}
+\title{Print Method for Simulated Data}
 \usage{
-\method{print}{condped_simdata}(x, ...)
+print.condped_simdata(x, ...)
+}
+\arguments{
+\item{x}{Object of class condped_simdata}
+
+\item{...}{Additional arguments passed to print}
 }
 \description{
-Print method for simulated data
+Print Method for Simulated Data
 }
