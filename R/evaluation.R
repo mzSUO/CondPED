@@ -154,34 +154,63 @@ compute_power_fdr <- function(pval_obs, true_labels, alpha = 0.05) {
 }
 
 
-#' Compute classification accuracy
+#' Compute classification accuracy with F1 scores
 #'
-#' @param predicted_labels Predicted QTL categories
+#' Computes overall accuracy and per-class F1 scores (method.md Section 0.3).
+#'
+#' @param predicted_labels Predicted QTL categories (5 classes: not_detected, covariance_induced, trait_specific, horizontal_pleiotropy, vertical_pleiotropy)
 #' @param true_labels True QTL categories
 #'
-#' @return List with accuracy and confusion matrix
+#' @return List with accuracy, confusion matrix, per-class precision/recall/F1
 #' @export
 #'
 compute_classification_accuracy <- function(predicted_labels, true_labels) {
 
-  # Overall accuracy
+  # Overall accuracy: Acc = (1/N) * sum(I(C_hat == C_true))
   accuracy <- sum(predicted_labels == true_labels) / length(true_labels)
 
   # Confusion matrix
   confusion <- table(True = true_labels, Predicted = predicted_labels)
 
-  # Per-class accuracy
+  # Per-class metrics
   classes <- unique(c(true_labels, predicted_labels))
-  per_class_acc <- sapply(classes, function(c) {
-    mask <- true_labels == c
-    if (sum(mask) == 0) return(NA)
-    sum(predicted_labels[mask] == c) / sum(mask)
-  })
+
+  per_class_metrics <- data.frame(
+    class = classes,
+    precision = NA,
+    recall = NA,
+    f1_score = NA,
+    stringsAsFactors = FALSE
+  )
+
+  for (c in classes) {
+    # TP: predicted c, true c
+    tp <- sum(predicted_labels == c & true_labels == c)
+
+    # FP: predicted c, true not c
+    fp <- sum(predicted_labels == c & true_labels != c)
+
+    # FN: predicted not c, true c
+    fn <- sum(predicted_labels != c & true_labels == c)
+
+    # Precision = TP / (TP + FP)
+    precision <- if ((tp + fp) > 0) tp / (tp + fp) else 0
+
+    # Recall = TP / (TP + FN)
+    recall <- if ((tp + fn) > 0) tp / (tp + fn) else 0
+
+    # F1 = 2 * Precision * Recall / (Precision + Recall)
+    f1 <- if ((precision + recall) > 0) 2 * precision * recall / (precision + recall) else 0
+
+    per_class_metrics$precision[per_class_metrics$class == c] <- precision
+    per_class_metrics$recall[per_class_metrics$class == c] <- recall
+    per_class_metrics$f1_score[per_class_metrics$class == c] <- f1
+  }
 
   return(list(
     accuracy = accuracy,
     confusion_matrix = confusion,
-    per_class_accuracy = per_class_acc
+    per_class_metrics = per_class_metrics
   ))
 }
 

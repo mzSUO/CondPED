@@ -10,11 +10,11 @@ NULL
 
 #' Select valid instrumental variables for MR
 #'
-#' Implements the instrument selection criterion from method.md Section 2.5.2.
+#' Implements the instrument selection criterion from method.md Section 0.2.1.
 #' An SNP is selected as a valid IV if:
-#' 1. Relevance: P_marginal < alpha_rel
-#' 2. Exclusion: P_cond > alpha_excl (no direct effect on outcome)
-#' 3. LD pruning: |r| < r_LD
+#' 1. Relevance: P_marginal < alpha_rel (default: 5e-8)
+#' 2. Exclusion: P_cond > alpha_excl (default: 0.05) - no direct effect on outcome
+#' 3. LD pruning: |r| < r_LD (default: 0.1)
 #'
 #' @param gwas_results Output from run_bidirectional_gwas()
 #' @param exposure_trait Name of exposure trait
@@ -53,7 +53,7 @@ select_ivs <- function(gwas_results,
   forward_df <- gwas_results$step2_forward[[outcome_trait]]
 
   # Step 1: Relevance - select SNPs associated with exposure
-  # (For now, use marginal p-value as proxy since we have full GWAS)
+  # P_Al^marg < 5e-8
   relevant_snps <- exposure_df$SNP[exposure_df$P_Value < alpha_rel]
 
   if (length(relevant_snps) == 0) {
@@ -65,7 +65,7 @@ select_ivs <- function(gwas_results,
   }
 
   # Step 2: Exclusion - check if SNPs have direct effect on outcome
-  # Use conditional p-value: if P_cond > alpha_excl, no direct effect
+  # P_B|A,l^cond > 0.05 (not significant -> satisfies exclusion)
   selected_ivs <- character()
 
   for (snp in relevant_snps) {
@@ -73,16 +73,10 @@ select_ivs <- function(gwas_results,
       fwd_row <- forward_df[forward_df$SNP == snp, ]
       if (nrow(fwd_row) > 0) {
         p_cond <- fwd_row$P_Value
-        # If conditional effect is not significant, satisfies exclusion
-        if (p_cond >= alpha_excl) {
+        # If conditional effect is NOT significant, satisfies exclusion
+        if (!is.na(p_cond) && p_cond > alpha_excl) {
           selected_ivs <- c(selected_ivs, snp)
         }
-      }
-    } else {
-      # If no conditional results, use marginal as fallback
-      out_row <- outcome_df[outcome_df$SNP == snp, ]
-      if (nrow(out_row) > 0 && out_row$P_Value >= alpha_excl) {
-        selected_ivs <- c(selected_ivs, snp)
       }
     }
   }
@@ -95,7 +89,7 @@ select_ivs <- function(gwas_results,
     ))
   }
 
-  # Step 3: LD pruning (if genotype matrix provided)
+  # Step 3: LD pruning |r_ll'| < 0.1
   if (!is.null(G) && length(selected_ivs) > 1) {
     G_sub <- G[, selected_ivs, drop = FALSE]
 
@@ -130,11 +124,11 @@ select_ivs <- function(gwas_results,
     stringsAsFactors = FALSE
   )
 
-  # Add exposure effects
+  # Add exposure effects (use 'Effect' column)
   for (snp in selected_ivs) {
     exp_row <- exposure_df[exposure_df$SNP == snp, ]
     if (nrow(exp_row) > 0) {
-      effects_df$Effect_exposure[effects_df$SNP == snp] <- exp_row$A
+      effects_df$Effect_exposure[effects_df$SNP == snp] <- exp_row$Effect
     }
   }
 
@@ -142,7 +136,7 @@ select_ivs <- function(gwas_results,
   for (snp in selected_ivs) {
     out_row <- outcome_df[outcome_df$SNP == snp, ]
     if (nrow(out_row) > 0) {
-      effects_df$Effect_outcome[effects_df$SNP == snp] <- out_row$A
+      effects_df$Effect_outcome[effects_df$SNP == snp] <- out_row$Effect
     }
   }
 
@@ -153,7 +147,106 @@ select_ivs <- function(gwas_results,
 }
 
 
-#' Estimate causal effect using Wald ratio
+#' Estimate causal effect using GLS (Generalized Least Squares)
+#'
+#' Implements method.md Section 0.2.1 causal effect estimation:
+#' gamma_hat = (theta_A^T * R^(-1) * theta_B) / (theta_A^T * R^(-1) * theta_A)
+#' where R is the LD correlation matrix between IVs.
+#'
+#' @param snp_effects Data frame with SNP effects on exposure and outcome
+#' @param G Genotype matrix for IVs (used to compute LD matrix)
+#'
+#' @return List with causal estimate, SE, and p-value using Wald test
+#' @export
+#'
+estimate_causal_gls <- function(snp_effects, G = NULL) {
+
+  if (nrow(snp_effects) == 0) {
+    return(list(
+      causal_effect = NA,
+      se = NA,
+      p_value = NA,
+      n_iv = 0
+    ))
+  }
+
+  beta_A <- snp_effects$Effect_exposure
+  beta_B <- snp_effects$Effect_outcome
+  snps <- snp_effects$SNP
+
+  # Remove NAs
+  valid <- !is.na(beta_A) & !is.na(beta_B) & beta_A != 0
+  beta_A <- beta_A[valid]
+  beta_B <- beta_B[valid]
+  snps <- snps[valid]
+
+  k <- length(beta_A)
+  if (k == 0) {
+    return(list(
+      causal_effect = NA,
+      se = NA,
+      p_value = NA,
+      n_iv = 0
+    ))
+  }
+
+  # Compute LD matrix R from genotype if provided
+  if (!is.null(G)) {
+    G_iv <- G[, snps, drop = FALSE]
+    R <- cor(G_iv)
+    R[is.na(R)] <- 0
+
+    # Ensure R is positive definite
+    if (k > 1) {
+      eigen_R <- eigen(R)
+      R <- eigen_R$vectors %*% pmax(eigen_R$values, 0.01) %*% t(eigen_R$vectors)
+    }
+  } else {
+    # If no genotype, assume independence (identity matrix)
+    R <- diag(k)
+  }
+
+  # GLS estimate: gamma = (theta_A^T * R^(-1) * theta_B) / (theta_A^T * R^(-1) * theta_A)
+  tryCatch({
+    R_inv <- solve(R)
+  }, error = function(e) {
+    R_inv <- MASS::ginv(R)
+  })
+
+  numerator <- t(beta_A) %*% R_inv %*% beta_B
+  denominator <- t(beta_A) %*% R_inv %*% beta_A
+
+  if (denominator == 0 || is.na(denominator)) {
+    return(list(
+      causal_effect = NA,
+      se = NA,
+      p_value = NA,
+      n_iv = k
+    ))
+  }
+
+  gamma <- as.numeric(numerator / denominator)
+
+  # Approximate SE using delta method
+  # Var(gamma) approx: sigma^2 / (theta_A^T * R^(-1) * theta_A)
+  resid <- beta_B - gamma * beta_A
+  sigma_sq <- sum(resid^2) / (k - 1)
+  se <- sqrt(sigma_sq / denominator)
+
+  # Wald test
+  z <- gamma / se
+  p_value <- 2 * pnorm(-abs(z))
+
+  return(list(
+    causal_effect = gamma,
+    se = se,
+    p_value = p_value,
+    n_iv = k
+  ))
+}
+
+
+#' Estimate causal effect using Wald ratio (single SNP)
 #'
 #' @param snp_effects Data frame with SNP effects on exposure and outcome
 #'

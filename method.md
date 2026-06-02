@@ -1,73 +1,4 @@
-```
-condPED/
-│
-├── DESCRIPTION
-├── NAMESPACE
-├── README.md
-├── LICENSE
-│
-├── R/
-│   ├── condPED.R                 # 主函数（唯一入口）
-│   ├── data_simulation.R          # 数据模拟（复用师姐）
-│   ├── qtlnetwork.R              # QTLNetwork 接口
-
-│   ├── projection.R              #  条件投影（OLS实现）
-│   ├── gwas.R                    #  GWAS（通用接口）
-
-│   ├── bidirectional.R           # 双向条件 GWAS 流程
-│   ├── classification.R          # QTL 分类
-
-│   ├── causal_mr.R               # 因果推断（MR）
-
-
-│   ├── evaluation.R              # CVR / Gain 等指标
-│   ├── visualize.R               # 作图
-
-├── inst/
-│   ├── extdata/                  # 示例数据存放用户安装包后读取的辅助数据，小的实例文件
-│
-├── tests/
-│   └── testthat/
-	│ ├── test_projection.R 
-	│ ├── test_classification.R 
-	│ └── test_causal_mr.R
-├── man/
-│
-└── data-raw/
-    └── preprocessing_scripts/
-    
-├── scratch/                # 临时产生的、巨大的中间数据，不占用备份空间
-```
-
-
-# 2. 材料与方法
-
-**Notation**
-
-| **Symbol**                        | **Range**      | **Description**                                                                                                                   |
-| --------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| $i$                               | $1, \ldots, m$ | Trait index                                                                                                                       |
-| $j$                               | $1, \ldots, n$ | Individual index                                                                                                                  |
-| $k$                               | $1, \ldots, p$ | Experimental environment index                                                                                                    |
-| $l, h$                            | $1, \ldots, s$ | Quantitative Trait SNP (QTS) index                                                                                                |
-| $r$                               |                | Number of additive-by-additive epistatic locus pairs                                                                              |
-| $c$                               | $1, \ldots, q$ | Covariate index                                                                                                                   |
-| $\boldsymbol{\Sigma}_E$           | $m \times m$   | Trait covariance of environmental effects                                                                                         |
-| $\boldsymbol{\Sigma}_{AE}$        | $m \times m$   | Trait covariance of additive $\times$ environment effects                                                                         |
-| $\boldsymbol{\Sigma}_{AAE}$       | $m \times m$   | Trait covariance of epistasis $\times$ environment effects                                                                        |
-| $\boldsymbol{\Sigma}_\varepsilon$ | $m \times m$   | Residual covariance matrix                                                                                                        |
-| $\otimes$                         | —              | Kronecker product                                                                                                                 |
-| $x_{jl}^a$                        | **基因型变量**      | 个体 $j$ 在位点 $l$ 的**加性基因型编码**。通常采用 0/1/2 编码（即风险等位基因的携带个数）。                                                                          |
-| $x_{jlh}^{aa}$                    | **上位性变量**      | 个体 $j$ 在位点 $l$ 与位点 $h$ 之间的**加性 $\times$ 加性上位性编码**。定义为 $x_{jl}^a \times x_{jh}^a$。                                                 |
-| $x_{jkc}$                         | **协变量**        | 个体 $j$ 在环境（或群体） $k$ 下第 $c$ 个**协变量**的观测值（如主成分 PC、性别、年龄等）。                                                                          |
-| $\theta_{iq}$                     | **通用遗传效应**     | QTS 对性状 $i$ 的**总遗传贡献**。当 $q=l$ 时代表加性效应 $\theta_{il}^a$；当 $q=(l,h)$ 时代表上位性效应 $\theta_{ilh}^{aa}$。                                  |
-| $\theta_{iq}^{\text{uncond}}$     | **边际遗传效应**     | **无条件（Marginal）遗传效应**。在不考虑其他性状影响时，通过标准 GWAS 或单表型混合模型估计得到的总效应。                                                                     |
-| $\theta_{iq}^{\text{ind}}$        | **独立遗传效应**     | **独立（Independent）遗传效应**。剔除其他性状的介导影响后，QTS 对性状 $i$ 的**直接贡献**。                                                                       |
-| $\theta_{iq}^{\text{shared}}$     | **共享遗传效应**     | **共享（Shared）遗传效应**。反映了 QTS 通过性状间的相关性或因果路径对性状 $i$ 产生的间接贡献：$\theta^{\text{shared}} = \theta^{\text{uncond}} - \theta^{\text{ind}}$。 |
-|                                   |                |                                                                                                                                   |
-
-
-## 2.1. Multivariate mixed linear model with additive and epistatic effects
+2.1. Multivariate mixed linear model with additive and epistatic effects
 
  **Scalar form**
 
@@ -93,558 +24,132 @@ where:
 - $\varepsilon_{ijk}$ is the residual error，$\varepsilon_{ijk} \sim N(0, \sigma_{\varepsilon i}^2)$. 
     
 
- All additive and additive-additive epistatic effects are fixed effects, environment effects and interaction of each genetic components with environments are modeled as random effects.
-
-
- **Matrix formulation**
-
-Let
-
-$$\mathbf{Y} = \begin{bmatrix} \mathbf{y}_{11} \\ \mathbf{y}_{12} \\ \vdots \\ \mathbf{y}_{np} \end{bmatrix} \in \mathbb{R}^{np \times m},$$
-
-where each row $\mathbf{y}_{jk} \in \mathbb{R}^m$ represents the vector of all traits for individual $j$ in environment $k$.
-
-The model can be written as:
-
-$$\mathbf{Y} = \mathbf{1}\boldsymbol{\mu}^T + \mathbf{X}_c \mathbf{B}_c + \mathbf{X}_A \mathbf{B}_A + \mathbf{X}_{AA} \mathbf{B}_{AA} + \mathbf{U}_E \mathbf{E}_E + \mathbf{U}_{AE} \mathbf{E}_{AE} + \mathbf{U}_{AAE} \mathbf{E}_{AAE} + \mathbf{E}_\varepsilon \tag{Eq. 2}$$
-
-or equivalently:
-
-$$\mathbf{Y} = \mathbf{X}\mathbf{B} + \sum_u \mathbf{U}_u \mathbf{E}_u$$
-
- **Joint distribution**
-
-To explicitly model cross-trait correlations, the model is formulated in vectorized form:
-
-$$\mathrm{vec}(\mathbf{Y}) \sim N\left( \mathrm{vec}(\mathbf{X}\mathbf{B}), \mathbf{V}_{total} \right)$$
-
- **Random effect distributions**
-
-All random effects are modeled using matrix normal distributions:
-
-- $\mathbf{E}_E \sim MN(\mathbf{0}, \mathbf{I}_p, \boldsymbol{\Sigma}_E)$
-    
-- $\mathbf{E}_{AE} \sim MN(\mathbf{0}, \mathbf{I}_{ps}, \boldsymbol{\Sigma}_{AE})$
-    
-- $\mathbf{E}_{AAE} \sim MN(\mathbf{0}, \mathbf{I}_{pr}, \boldsymbol{\Sigma}_{AAE})$
-    
-- $\mathbf{E}_\varepsilon \sim MN(\mathbf{0}, \mathbf{I}_{np}, \boldsymbol{\Sigma}_\varepsilon)$
-    
-
-where the column covariance matrices $\boldsymbol{\Sigma}_\cdot$ characterize trait–trait covariance structures for each random effect component.
-
- **Variance–covariance structure**
-
-Under this formulation, the phenotypic variance–covariance matrix is:
-
-$$\mathbf{V}_{total} = \mathbf{U}_E \mathbf{U}_E^\top \otimes \boldsymbol{\Sigma}_E + \mathbf{U}_{AE} \mathbf{U}_{AE}^\top \otimes \boldsymbol{\Sigma}_{AE} + \mathbf{U}_{AAE} \mathbf{U}_{AAE}^\top \otimes \boldsymbol{\Sigma}_{AAE} + \mathbf{I} \otimes \boldsymbol{\Sigma}_\varepsilon $$
-
-**Fixed effects**
-
-The fixed-effect parameter matrix is defined as:
-
-$$\mathbf{B} = (\boldsymbol{\mu}^T, \mathbf{B}_c^T, \mathbf{B}_A^T, \mathbf{B}_{AA}^T)^T$$
-
-
-
+ All additive and additive-additive epistatic effects are fixed effects, environment effects and interaction of each genetic components with environments are modeled as random effects. 模型的矩阵形式及方差成分估计细节详见补充材料S1。
 ## 0.1. 基于条件投影的遗传效应分解框架
 
-Assuming $\mathbf{y}_{jk} \sim N(\boldsymbol{\mu}, \mathbf{V})$, the conditional variance of trait $i$ given the remaining traits $\mathbf{y}_{-i}$ is:
+一个边际SNP–性状关联并不一定代表该位点对目标性状存在真实的独立遗传作用，该关联还可能来源于性状间的协方差传播，或反映位点同时作用于多个性状的多效性结构。此外，多效性本身又可能对应不同的生物学机制，包括位点对多个性状的独立直接作用（horizontal pleiotropy），或通过性状间因果路径传递产生的间接作用（vertical pleiotropy）。
 
-$$
-\mathbf{V}_{i \mid -i} = V_{ii} - \mathbf{C}_{i,-i} \mathbf{V}_{-i}^{-1} \mathbf{C}_{-i,i} \tag{Eq. 3}
-$$
+为区分上述不同情形，本研究将条件投影分析与孟德尔随机化（Mendelian randomization, MR）整合于统一的混合模型框架中。首先通过条件投影将边际遗传效应正交分解为独立遗传效应与协方差介导效应；随后通过跨性状独立效应比较识别单性状特异性位点与多效性位点；最后利用 MR 推断多效性位点的因果作用机制。整个框架实现了从统计混杂到直接效应，再到因果机制的层级化解耦。
 
-其中 $\mathbf{C}_{i,-i} = \text{Cov}(y_i, \mathbf{y}_{-i})$ 是性状 $i$ 与其余性状的协方差行向量。
-### 0.1.1. 条件表型的构造与性质
+### 0.1.1. 理论框架
+
+令 $\mathbf{y}_{jk} \in \mathbb{R}^m$ 表示个体 $j$ 在环境 $k$ 下所有性状的观测向量。在混合模型框架下，性状间的边际表型协方差矩阵为：
+
+$$\mathbf{V} = \boldsymbol{\Sigma}_E + \boldsymbol{\Sigma}_{AE} + \boldsymbol{\Sigma}_{AAE} + \boldsymbol{\Sigma}_\varepsilon$$
+
+该矩阵聚合了所有随机效应在性状层面的协方差成分。根据多元正态分布的条件分布理论，性状 $i$ 在给定其余性状 $\mathbf{y}_{-i}$ 条件下的条件方差为：
+
+$$\mathbf{V}_{i \mid -i} = V_{ii} - \mathbf{C}_{i,-i} \mathbf{V}_{-i}^{-1} \mathbf{C}_{-i,i}$$
+
+其中 $\mathbf{C}_{i,-i}$ 为性状 $i$ 与其余性状的协方差向量。该条件方差对应于$\mathbf{V}_{-i}$ 在表型协方差矩阵中的Schur补，在几何上表示移除了与其他性状线性依赖后的残余变异。
+
+### 0.1.2. 条件表型的构造与性质
 
 While Eq. (3) provides an algebraic expression for the conditional variance $\mathbf{V}_{i \mid -i}$, the conditional variance components (e.g., additive, epistatic) cannot be directly extracted from this matrix form alone (Zhu 1995). Decomposing $\mathbf{V}_{i \mid -i}$ into interpretable genetic components requires fitting a mixed linear model—yet the conditional distribution itself is not directly observable. To overcome this challenge, we adopt an indirect approach: construct an equivalent vector whose variance structure matches $\mathbf{V}_{i \mid -i}$, enabling variance component estimation via standard mixed model machinery.
 
-Estimation of conditional genetic variance components $(\sigma_{u(i | -i)}^{2})$ or prediction of conditional genetic effects $(e_{u(i | -i)})$ cannot be derived directly from the estimate of conditional variance-covariance matrix $(\hat{V}_{(i | -i)})$ . The indirect approaches are suggested for analyzing conditional genetic effects and their variance components.
-虽然条件分布本身不可观测，但我们可以构造一个等价的线性投影，其方差结构与真实条件方差完全一致（Eq. 7），从而通过标准混合模型估计条件遗传效应。
-Let $\tilde{y}_{ijk} = y_{ijk} - \hat{\mu}_i - \sum_{c=1}^q \hat{b}_{ic}x_{jkc}$ denote the residual phenotype for trait $i$ of individual $j$ in environment $k$, obtained after adjusting for the population mean and covariate effects. We define the conditional phenotype as: $$ \tilde{y}_{ijk}^* = \tilde{y}_{ijk} - \tilde{\mathbf{y}}_{-i,jk}^\top {\gamma}_{i,-i} \tag{Eq. 4} $$ where $\tilde{\mathbf{y}}_{-i,jk} = [\tilde{y}_{1jk},\dots,\tilde{y}_{(i-1)jk},\tilde{y}_{(i+1)jk},\dots,\tilde{y}_{mjk}]^\top$ is the vector of residual phenotypes for all traits excluding $i$,  and the projection coefficient vector is defined as $\gamma_{i,-i} = V_{-i}^{-1} C_{-i,i}$
+> Estimation of conditional genetic variance components $(\sigma_{u(i | -i)}^{2})$ or prediction of conditional genetic effects $(e_{u(i | -i)})$ cannot be derived directly from the estimate of conditional variance-covariance matrix $(\hat{V}_{(i | -i)})$ . The indirect approaches are suggested for analyzing conditional genetic effects and their variance components.
 
-Here, $V_{-i}$ denotes the phenotypic variance–covariance matrix among traits excluding $i$, and $C_{-i,i}$ is the covariance vector between trait $i$ and the remaining traits.
+Let $\tilde{y}_{ijk} = y_{ijk} - \hat{\mu}_i - \sum_{c=1}^q \hat{b}_{ic}x_{jkc}$ denote the residual phenotype for trait $i$ of individual $j$ in environment $k$, obtained after adjusting for the population mean and covariate effects. We define the conditional phenotype as: $$ \tilde{y}_{ijk}^* = \tilde{y}_{ijk} - \tilde{\mathbf{y}}_{-i,jk}^\top {\gamma}_{i,-i} \tag{Eq. 4} $$ where $\tilde{\mathbf{y}}_{-i,jk} = [\tilde{y}_{1jk},\dots,\tilde{y}_{(i-1)jk},\tilde{y}_{(i+1)jk},\dots,\tilde{y}_{mjk}]^\top$ is the vector of residual phenotypes for all traits excluding $i$,  and the projection coefficient vector is defined as $\gamma_{i,-i} = V_{-i}^{-1} C_{-i,i}$. 该构造确保 $\tilde{y}_i^*$ 与其余性状在表型协方差意义上正交，即 $\mathrm{Cov}(\tilde{y}_i^*, \tilde{\mathbf{y}}_{-i}) = \mathbf{0}$，且满足方差等价性 $\mathrm{Var}(\tilde{y}_i^*) = \mathbf{V}_{i \mid -i}$(证明见补充材料)
 
+对条件表型拟合与边际模型相同的混合线性模型结构，记条件模型中的遗传效应为 $\theta_{iq}^*$（其中 $q=l$ 表示加性效应，$q=(l,h)$ 表示上位性效应）。根据补充材料中证明的方差等价性，我们构造的条件表型的方差严格等于给定所有其他性状后的理论表型条件方差$\mathbf{V}_{i \mid -i}$ ，从条件模型估计的方差成分 $\hat{\sigma}_{u^*}^2$ 是真实条件方差成分 $\sigma_{u(i \mid -i)}^2$ 的无偏估计（$u \in \{E, AE, AAE, \varepsilon\}$）。进一步地，条件模型中的随机效应与真实条件随机效应在分布上等价（补充材料）。
 
-**Orthogonality property.** From the construction in Eq. (4), the conditional phenotype satisfies the following orthogonality property (see Supplementary Information for proof):
-$$
-\mathrm{Cov}(\tilde{y}_i^*, \tilde{\mathbf{y}}_{-i}) = \mathbf{0} \tag{Eq. 6}
-$$
-This result follows from the projection property of the multivariate normal distribution, indicating that the conditional phenotype $\tilde{y}_i^*$ is orthogonal to the remaining traits in the sense of phenotypic covariance.
-
-
-**Variance equivalence**. The variance of $\tilde{y}_{ijk}^*$ equals the conditional variance in Eq. (3)
-$$\text{Var}(\tilde{y}_{ijk}^*) = \mathbf{V}_{ii} - \mathbf{C}_{i,-i} \mathbf{V}_{-i}^{-1} \mathbf{C}_{i,-i} = \mathbf{V}_{i \mid -i} \tag{Eq.7}$$
-
-(derivation in Supplementary Information). Random vector $\tilde{y}_{ijk}^*$ has variance, which is identical to the conditional variance-covariance matrix $\mathbf{V}_{i \mid -i}$ . In practice, unknown parameters in Equation 4 can be replaced by their unbiased estimates.
-### 0.1.2. 条件混合模型及遗传效应估计与分解
 **Mixed model for conditional phenotypes.** We fit $\tilde{y}_{ijk}^*$ ​ to the same mixed linear model structure as in Eq. (1):
 $$\begin{aligned} \tilde{y}_{ijk}^* =  \sum_{l=1}^s a_{il}^* x_{jl}^a + \sum_{l=1}^{s-1} \sum_{h=l+1}^{s} aa_{ilh}^* x_{jlh}^{aa}  \\ + e_{ik}^* + \sum_{l=1}^s ae_{ilk}^* x_{jl}^a + \sum_{l=1}^{s-1} \sum_{h=l+1}^{s}aae_{ilhk}^* x_{jlh}^{aa} + \varepsilon_{ijk}^* \end{aligned} \tag{Eq. 8}$$
 
  The variance-covariance structure of this model is:
 
 $$\text{Var}(\tilde{y}_{ijk}^*) =  \mathbf{U}_E \mathbf{U}_E^\top \otimes \boldsymbol{\Sigma}_E^* + \mathbf{U}_{AE} \mathbf{U}_{AE}^\top \otimes \boldsymbol{\Sigma}_{AE}^* + \mathbf{U}_{AAE} \mathbf{U}_{AAE}^\top \otimes \boldsymbol{\Sigma}_{AAE}^* + \mathbf{I} \otimes \boldsymbol{\Sigma}_\varepsilon^* =  \mathbf{V}^* \tag{Eq. 9}$$
+由此得到条件遗传效应。
 
-### 0.1.3. **Distributional equivalence 证明 
+### 0.1.3. 遗传效应的分解
+由于条件表型在表型协方差意义上与所有其他性状正交，从其估计的遗传效应代表了**不依赖于其他性状线性预测的成分**。我们将从条件表型估计的遗传效应定义为**条件遗传效应** $\theta_{iq}^{\mathrm{cond}} \equiv \theta_{iq}^*$。基于条件投影的线性性质，边际遗传效应可唯一分解为两个统计上不相关的成分：。
 
-Combining Eqs. (7) and (9) yields $\mathbf{V}^* = \mathbf{V}_{i \mid -i}$​. Consequently, variance components estimated from Eq. (8) are unbiased estimators of the conditional variance components:$$\hat{\sigma}_{u^*}^2 = \hat{\sigma}_{u(i \mid -i)}^2 $$
 
-To formally connect the conditional model with the original parameterization,  we define the **conditional random effects** for trait $i$ given the remaining traits as:
+$$\theta_{iq}^{\mathrm{marg}} = \theta_{iq}^{\mathrm{cond}} + \theta_{iq}^{\mathrm{cov}}$$
 
-$$
-e_{(i \mid -i)k}, \quad ae_{(i \mid -i)lk}, \quad aae_{(i \mid -i)lhk}
-$$
-which represent, respectively, the environmental, additive-by-environment, and epistasis-by-environment effects contributing to the conditional trait variation after removing linear dependence on other traits.
-where $u \in \{E, AE, AAE, \varepsilon\}$. Furthermore, the random effects from the conditional model are distributionally equivalent to the true conditional random effects. Formally, let $e_{(i \mid -i)k}$, $ae_{(i \mid -i)lk}$, and $aae_{(i \mid -i)lhk}$ denote the environmental, additive-by-environment, and epistasis-by-environment effects for trait $i$ conditioned on other traits. Then:
-$$\begin{aligned} e_{ik}^* &\overset{d}{=} e_{(i \mid -i)k} \sim N(0, \sigma_{E^*}^2), \\ ae_{ilk}^* &\overset{d}{=} ae_{(i \mid -i)lk} \sim N(0, \sigma_{AE^*}^2), \\ aae_{ilhk}^* &\overset{d}{=} aae_{(i \mid -i)lhk} \sim N(0, \sigma_{AAE^*}^2) \end{aligned} \tag{Eq. 10}$$
+其中 $\theta_{iq}^{\mathrm{cov}}$ 表示由性状间线性协方差结构解释的共享成分。由于 $\tilde{y}_i^*$ 与 $\tilde{\mathbf{y}}_{-i}$ 正交，两个成分在统计上不相关（$\mathrm{Cov}(\theta_{iq}^{\mathrm{cond}}, \theta_{iq}^{\mathrm{cov}}) = 0$）。This decomposition represents a statistical orthogonal reparameterization of SNP effects induced by phenotype-space projection, rather than a decomposition of underlying biological causal mechanisms.
+## 0.2. 分层遗传效应解耦
 
-These conditional random effects can be predicted via best linear unbiased prediction (BLUP; Henderson 1963) or, when variance unbiasedness is required, adjusted unbiased prediction (AUP; Zhu 1995).
+基于上述条件投影框架，我们建立了一个统一的分层检测流程，旨在系统性地将多性状GWAS中的边际关联分解为可解释的生物学模式。
 
-**Genetic effect decomposition.** To provide a unified representation of genetic effects, we introduce a generic index $q \in \mathcal{Q}$, where $q = l$ denotes additive effects and $q = (l,h)$ denotes additive-by-additive epistatic effects. Accordingly, all genetic effects are denoted as $\theta_{iq}$.
+### 0.2.1. 检测流程设计
 
-Under this framework, the conditional phenotype $\tilde{y}_{ijk}^*$ defined in Eq. (4) captures the component of trait $i$ orthogonal to all other trait residuals. Accordingly, any genetic effect estimated from this transformed phenotype represents the component independent of cross-trait linear dependence. We therefore define the independent (orthogonal) genetic effect as: $\theta_{iq}^{\text{ind}} \equiv \theta_{iq}^*$  where $\theta_{iq}^*$ is the effect estimated from the conditional phenotype $\tilde{y}_i^*$. 
+令 $\mathcal{L}$ 表示经置换检验（1,000次）确定的全基因组显著位点集合。对于每个候选对 $(l,i)$（$l \in \mathcal{L}$, $i=1,\ldots,m$），依次执行四个步骤：
 
-By construction, $\theta_{iq}^{\text{ind}}$ represents the trait-specific genetic component that cannot be explained or predicted by other traits. Since the conditional projection represents a linear orthogonal decomposition of the original phenotypic space, the marginal (unconditional) genetic effect can be additively partitioned as: $$\theta_{iq}^{\text{uncond}} = \theta_{iq}^{\text{ind}} + \theta_{iq}^{\text{shared}} \tag{Eq. 11}$$ where $\theta_{iq}^{\text{shared}}$ denotes the shared genetic component that is explained by the linear covariance structure among traits. This decomposition is statistically consistent because the conditional phenotype is constructed to be orthogonal to other traits, ensuring that the two components are statistically uncorrelated and structurally interpretable. Together, they allow us to distinguish between direct, trait-specific genetic effects and indirect, covariance-mediated effects that contribute to pleiotropic genetic architectures.
-由于 $\tilde{y}_i^*$ 与 $\tilde{y}_{-i}$ 正交，因此 $\text{Cov}(\theta_{iq}^{\text{ind}}, \theta_{iq}^{\text{shared}}) = 0$，该分解是唯一且无偏的。
-## 0.2. Bidirectional conditional GWAS framework
+**第一层：边际多性状GWAS关联检测**。利用QTLNetwork中的多性状混合模型检验 $H_0: \boldsymbol{\theta}_l = \mathbf{0}$，识别显著位点集合 $\mathcal{L} = \{l: P_l^{\mathrm{marg}} < \alpha_1\}$，其中 $\alpha_1$ 为经验全基因组阈值。对每个性状 $i$ 进一步拟合单性状模型，估计边际效应 $\hat{\theta}_{il}^{\mathrm{marg}}$ 作为后续分解基准。
+借鉴 Byrne 等人 (2020) 在精神疾病遗传学中的研究策略，我们仅对原始边际 GWAS 中已达到全基因组显著性的位点进行后续条件分析。仅比较边际模型与条件模型的效应值差异不足以可靠识别具有统计显著性的遗传效应，因为对相关性状具有强效应的位点在条件化后可能出现统计上的伪效应变化。通过明确评估条件效应的统计显著性，我们避免了对条件效应位移的误读。
 
+>
 
-Building upon the conditional projection framework (Section 2.2) and its statistical properties (Section 2.3), we develop a bidirectional conditional testing procedure to identify trait-specific QTL and to decompose their genetic effects into independent and shared components.
+**第二层：前向条件分析独立遗传效应识别**。对每个性状 $i$，按2.2.2节所述构造条件表型 $\tilde{y}_{i,jk}^*$，并对 候选位点$l \in \mathcal{L}$ 拟合条件混合模型，估计独立效应 $\hat{\theta}_{il}^{\mathrm{cond}}$。采用Bonferroni校正的显著性阈值 $\alpha_2 = 0.05/(|\mathcal{L}| \times m)$。我们将候选位点初步划分为两类：
+- 协方差解释关联：位点对性状i的边际效应显著，但独立效应不显著 ($P_{il}^{\mathrm{marg}} < \alpha_1, P_{il}^{\mathrm{ind}} \ge \alpha_2$)，表明该关联可由性状间协方差完全解释，no detectable covariance-independent genetic effect； 
+- 条件显著关联：位点对性状i的独立效应显著 ($P_{il}^{\mathrm{ind}} < \alpha_2$)，表明该关联不能被性状间协方差完全解释，位点存在不能被其他性状线性解释的遗传效应。covariance-explained component
 
-1. **A forward conditional analysis**, which removes cross-trait covariance via orthogonal projection to isolate independent genetic effects; and
-    
-2. **A reverse conditional analysis**, which evaluates whether associations with secondary traits can be fully explained by the target trait, thereby assessing a mediation-like dependency structure.我们通过 reverse conditional test 排除通过其他性状介导的关联
+**第三层：单性状与多性状效应区分**
 
-### 0.2.1. Overview of the testing procedure
+对于具有条件显著关联的位点，我们通过比较其在所有性状上的条件遗传效应的统计显著性，进一步区分单性状特异性模式与多效性模式：
+- **性状特异性条件效应**：位点仅在一个性状上具有显著的条件遗传效应 ($P_{il}^{\mathrm{ind}} < \alpha_2$ 且 $\forall t \neq i, P_{tl}^{\mathrm{ind}} \ge \alpha_2$)，表明该位点仅在目标性状上检测到与其他性状正交的遗传成分，在所有其他性状上均未检测到显著的条件遗传效应；
+- **多效性效应模式**：位点在两个或更多性状上具有显著的条件遗传效应 ($\exists t \neq i, P_{il}^{\mathrm{ind}} < \alpha_2$ 且 $P_{tl}^{\mathrm{ind}} < \alpha_2$)，表明该位点在多个性状上均检测到与其他性状正交的遗传成分。
 
-Let $\mathcal{L}$ denote the set of candidate QTL identified from the multivariate GWAS (Section 2.1). For each trait–locus pair $(i,l)$, the procedure consists of three steps:
+**第四层：多效性的因果机制分解**
 
-1. **Marginal screening (multivariate GWAS)**: detect loci associated with the trait set.
-    加入**效应分解**单表型边际效应θiquncond​作为分解的基准，计算独立效应和共享效应逐个性状拟合单表型混合模型
-2. **Forward conditional GWAS**: test for trait-specific (independent) effects.
-    
-3. **Reverse conditional GWAS**: validate whether remaining cross-trait associations are mediated through the target trait.
+多效性位点可能对应两种不同的生物学机制：**水平多效性**，即位点独立直接影响多个性状，不存在性状间的因果依赖；以及**垂直多效性**，即位点仅直接影响上游性状，其对下游性状的效应通过性状间的因果通路介导传递。为区分这两种机制，我们整合孟德尔随机化方法进行因果推断。
 
+**工具变量筛选**
 
+传统孟德尔随机化的核心挑战在于难以验证排他性约束，即工具变量仅通过暴露性状影响结果性状，而对结果性状无独立于暴露的直接效应。我们利用条件 GWAS 的结果为这一假设提供经验证据：对于因果方向 $A \rightarrow B$，若位点对 B 的独立遗传效应 $\theta_{B \mid A,l}^{\mathrm{ind}}$ 统计上不显著，则与孟德尔随机化的排他性约束一致，为 "该位点对 B 没有独立于 A 的直接效应" 这一假设提供了经验支持。
+（我们的结果没有违反排他性约束，但是不能说证明了排他性约束，不要过度声明）
 
-### 0.2.2. Bidirectional conditional GWAS
+据此，我们定义有效工具变量集合为：
+$$\mathcal{Z}_A = \left\{ l : \begin{array}{l} P_{Al}^{\mathrm{marg}} < 5 \times 10^{-8} \quad \text{(相关性)} \\ P_{B \mid A,l}^{\mathrm{ind}} > 0.05 \quad \text{(排他性)} \\ |r_{ll'}| < 0.1 \ \forall l' \in \mathcal{Z}_A, l' < l \quad \text{(LD修剪)} \end{array} \right\}$$
+需要特别强调的是，MR 分析使用的是全基因组独立的显著位点，而非当前正在分类的单个位点，避免了循环推断问题。同时，条件效应不显著仅表明在当前样本量和统计模型下未检测到显著的直接效应，不能绝对证明水平多效性不存在。
 
-**Input:** Phenotype matrix $\mathbf{Y}$, genotype matrix $\mathbf{X}$, covariates $\mathbf{X}_c$, significance thresholds $\alpha_1, \alpha_2, \alpha_3$
+**考虑 LD 的广义最小二乘因果估计**
 
-**Output:** Classification of QTL–trait pairs into four categories
+为校正工具变量间残留连锁不平衡导致的估计偏倚，我们采用广义最小二乘法 (GLS) 估计因果效应。令 $\hat{\boldsymbol{\theta}}_A$ 和 $\hat{\boldsymbol{\theta}}_B$ 分别为工具变量集合对暴露性状 A 和结果性状 B 的边际效应向量，$\mathbf{R}$ 为工具变量间的 LD 相关矩阵。因果效应的 GLS 估计为：
+$$\hat{\gamma}_{A \rightarrow B} = \frac{\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_B}{\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_A} \tag{7}$$
+采用 Wald 检验评估因果效应的统计显著性。对于每一对性状，都进行了双向多因素分析（bidirectional multivariate analysis）。如果某个基因位点的因果效应在某个方向上显着（例如，A → B，P < 0.05），但在相反方向上不显着（B → A，P ≥ 0.05），则该基因位点被归类为具有“垂直多效性”（vertical pleiotropy）。如果两个方向的效应都显着，则该基因位点被标记为“双向多效性”或“存在混杂因素”的类型，并被排除在“水平多效性”（horizontal pleiotropy）或“垂直多效性”的分类之外；因为这种模式可能反映了相互影响的关系或未测量的混杂因素。如果两个方向的效应都不显着，则该基因位点被归类为具有“水平多效性”。
 
-**Step 1: Marginal multivariate GWAS**
+### 0.2.2. 介导机制的一致性验证
 
-For each locus $l = 1, \ldots, s$, test:
+对于 MR 支持的因果通路 $A \rightarrow B$，我们进一步进行反向条件分析以验证介导机制的一致性：
 
-$$H_0: \boldsymbol{\theta}_l = \mathbf{0} \quad \text{vs.} \quad H_1: \boldsymbol{\theta}_l \neq \mathbf{0}$$
+$$\tilde{y}_{t \mid i,jk} = \tilde{y}_{t,jk} - \gamma_{ti} \tilde{y}_{i,jk} \tag{8}$$
 
-using Wilks’ Lambda based on model (2). Define:
+在经典的完全介导模型，控制上游性状 $i$ 后，位点对下游性状 $t$ 的效应应该显著减弱或消失。这一分析为因果推断提供了额外的支持证据。
 
-$$\mathcal{L} = \{l : P_l^{\mathrm{marg}} < \alpha_1\}, \quad \alpha_1 = QTLNetwork中置换检验的阈值.$$
+对于MR支持的因果通路，进行了逆向条件分析以验证介导一致性。我们没有采用任意比例阈值，而是通过单侧Wilcoxon符号秩检验（检验配对差异（原始效应减去调整后效应）是否随机大于零，评估调整上游性状后，遗传效应对下游性状的效应是否系统性减弱。P值<0.05被视为显著效应衰减的证据，因此通过了一致性验证。
+### 0.2.3. 统一分类体系
 
-**Step 2: Forward conditional GWAS **
+综合上述四层分析结果，我们将每个性状-位点对归入以下五个类别：
 
-For each trait $i = 1, \ldots, m$:
+**表 1. SNP-性状关联的分层分类体系**
 
-1. Construct conditional phenotype:
-    
-    $$\tilde{y}_{i,jk}^* = \tilde{y}_{i,jk} - \tilde{\mathbf{y}}_{-i,jk}^\top \hat{\mathbf{\gamma}}_{i,-i},$$
-    
-2. For each $l \in \mathcal{L}$, fit:
-    
-    $$\tilde{y}_{ijk}^* = \theta_{il}^{\mathrm{ind}} x_{jl} + e_{ik}^* + \varepsilon_{ijk}^*,$$
-    
+| **类别**                                             | **判定标准统计条件**                                                                                                                | **生物学解释**                                                                                                                            |                                                   |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| **未检测到**                                           | $P_{il}^{\mathrm{marg}} \ge \alpha_1$ 对所有性状 $i$                                                                             | 边际 GWAS 未达显著性阈值。该位点与任何性状均无显著遗传关联，或效应低于检测阈值                                                                                           | 位点对所有性状无作用，或作用过弱                                  |
+| **协方差介导关联**covariance-induced /explained component | $P_{il}^{\mathrm{marg}} < \alpha_1$ 且 $P_{il}^{\mathrm{ind}} \ge \alpha_2$                                                  | 边际显著但独立效应不显著。位点仅对其他性状有真实遗传效应，目标性状上的显著关联完全是性状间遗传协方差被动牵连的统计假象                                                                          | 该位点与目标性状的边际关联可完全由其他性状的线性协方差解释，未检测到与其他性状正交的遗传成分    |
+| **性状特异性独立效应**                                      | $P_{il}^{\mathrm{ind}} < \alpha_2$ 且 $\forall t \neq i, P_{tl}^{\mathrm{ind}} \ge \alpha_2$                                 | 仅在一个性状上具有显著独立效应。位点的独立遗传效应完全集中在单一性状上，对其他性状无独立作用                                                                                       | 该位点仅在一个性状上检测到显著的条件遗传效应，在所有其他性状上均未检测到显著的正交遗传成分     |
+| **水平多效性**                                          | $\exists t \neq i, P_{il}^{\mathrm{ind}} < \alpha_2$ 且 $P_{tl}^{\mathrm{ind}} < \alpha_2$，且 MR 不支持任何性状间的因果关系                | 多个性状具有显著独立效应，但无因果证据。位点独立且直接地影响多个性状，不存在性状间的上下游因果关系，反映基因的多功能性                                                                          | 该位点在多个性状上检测到显著的条件遗传效应，且无统计证据支持性状间存在因果介导关系         |
+| **垂直多效性**                                          | $\exists t \neq i, P_{il}^{\mathrm{ind}} < \alpha_2$ 且 $P_{tl}^{\mathrm{ind}} < \alpha_2$，且 MR 显著支持 $i \rightarrow t$ 的因果关系 | 多个性状具有显著独立效应，且存在因果证据。位点对下游性状的效应<font color="#ff0000">存在</font>通过上游性状的因果通路介导传递，揭示了遗传变异作用的上下游传递机制，不能说<font color="#ff0000">完全中介</font> | 该位点在多个性状上检测到显著的条件遗传效应，且统计证据与 "上游性状因果介导下游性状" 的模型一致 |
+| 双向多效性                                              | 两个方向都显著                                                                                                                     |                                                                                                                                      |                                                   |
+## 0.3. 统计检验与计算实现
 
-这一步直接在R中编程实现GWAS，注意不是全基因组，是第一步中候选SNP集
-    
-$\mathcal{S}_1 = \{(l,i): P_{il}^{\mathrm{cond}} < \alpha_2\}, \quad \alpha_2 = \frac{0.05}{|\mathcal{L}| \cdot m}.$
-    
 
-**Step 3: Reverse conditional GWAS 
+{全基因组关联分析}。边际多性状 GWAS 采用 QTLNetwork 2.0 软件实现，该软件基于混合线性模型框架联合检验多个性状的遗传效应。为控制实验整体 I 类错误率，临界 F 值通过 Henderson III 方法结合置换检验（1,000 次重复）在 0.05 显著性水平下确定。对所有显著信号进行逐步回归筛选，排除虚假关联并识别条件独立的 QTS 集合 $\mathcal{L}$，用于后续条件分析。
 
-For each each $(l,i) \in \mathcal{S}_1$ and each $t \neq i$, construct the reverse conditional phenotype by conditioning on **all traits except $i$**: $\tilde{y}_{t \mid (-i),jk} = \tilde{y}_{t,jk} - \tilde{\mathbf{y}}_{-i,jk}^\top \boldsymbol{\gamma}_{t,-i}$ 
+{条件分析与因果推断}。所有后续分析在 R 4.4.2 环境下实现。表型协方差矩阵 $\mathbf{V}$ 及投影系数 $\boldsymbol{\gamma}_{i,-i}$ 通过残差表型的样本协方差估计。方差成分采用 REML 算法估计。显著 QTS 的遗传效应通过 
+**解释性指标如下表**。可视化使用包实现。
 
-Construct reverse conditional phenotype:
-	    <font color="#ff0000">控制除 i 以外的所有 m−1 个性状后，位点对 t 无效应</font>
-> 反向条件检验的核心逻辑是：如果一个 QTS 是性状i特异性的，那么它对任何其他性状t的效应都必须完全通过性状i介导。因此，当我们控制了所有其他性状（除i外）之后，QTS 对t的剩余效应应该完全由i介导，即统计上不显著。
-> 
-> 反之，如果控制了所有其他性状之后，QTS 对t仍然有显著效应，说明 QTS 对t存在独立于i和所有其他性状的遗传效应，即存在独立多效性。
-> 
-> 与传统的 " 控制目标性状i" 的方法相比，我们的反向条件设计能够排除其他性状的混杂影响，更准确地识别真正的性状特异性位点。这一设计借鉴了 Byrne 等人 (2020) 在精神疾病遗传学中的研究思路，但扩展到了多环境和上位性效应的情形。
+模型评估指标体系
 
- Fit:
-    
-    $$ \tilde{y}_{t \mid (-i),jk} = \theta_{t \mid (-i),l} x_{jl} + e_{t \mid (-i),k} + \varepsilon_{t \mid (-i),jk} $$
+| 评估维度      | 指标                          | 数学定义                                                                                                                                  | 解释                                            |
+| :-------- | :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------ | :-------------------------------------------- |
+| **统计有效性** | I类错误率 $\alpha_{\text{emp}}$ | $\frac{\sum_{l \in \mathcal{H}_0} \mathbb{1}(P_l < \alpha)}{\|\mathcal{H}_0\|}$                                                       | 零假设位点的假阳性率，目标 ≤ 0.05                          |
+|           | 统计效能 Power                  | $\frac{\sum_{l \in \mathcal{H}_1} \mathbb{1}(P_l < \alpha)}{\|\mathcal{H}_1\|}$                                                       | 真阳性位点的检出率，目标 ≥ 0.80                           |
+|           | 检测增益 Gain$_i$               | $\frac{\|{l: P_{il}^{\mathrm{cond}} < \alpha_2, P_{il}^{\mathrm{marg}} \geq \alpha_1}\|}{\|{l: P_{il}^{\mathrm{marg}} < \alpha_1}\|}$ | 条件分析中显著但边际分析中不显著的位点比例，反映了条件分析在控制协方差混杂后的检测能力提升 |
+| **分类准确性** | 整体准确率 Acc                   | $\frac{1}{N} \sum_{(l,i)} \mathbb{1}(\hat{C}_{li} = C_{li}^{\text{true}})$                                                            | 五分类判定全部正确的比例                                  |
+|           | 类别F1分数 $F1_c$               | $\frac{2 \cdot \text{Prec}_c \cdot \text{Rec}_c}{\text{Prec}_c + \text{Rec}_c}$                                                       | 每个类别的精确率与召回率调和平均                              |
+| **估计精度**  | 效应估计RMSE                    | $\sqrt{\frac{1}{N} \sum_{(l,i)} (\hat{\theta}_{il}^{\mathrm{cond}} - \theta_{il}^{\text{true}})^2}$                                   | 条件遗传效应估计的均方根误差                                |
 
-直接在R中实现GWAS
-    
-    
- Define Layer 2 significance: $\alpha_3 = \frac{0.05}{|S_1|(m-1)}$.
-<font color="#ff0000"> 或者设宽松阈值：For Layer 2 tests, we control the false discovery rate (FDR) at 0.05 across all reverse conditional tests.</font>
-A pair $(l,i)$ is declared **trait-specific** if:
-
-$$P_{t \mid (-i),l} \ge \alpha_3, \quad \forall t \neq i$$
-
-
-### 0.2.3. Interpretation of the bidirectional design
-
-The forward and reverse steps play distinct statistical roles.
-
-- **The forward step** performs a multivariate projection that removes all linear dependence on other traits, yielding an estimate of the independent genetic effect.
-    
-- The reverse step evaluates whether the association between the locus and secondary traits is statistically eliminated after conditioning on all other traits, which provides a criterion for statistical trait-specificity rather than causal mediation.
-    
-
-### 0.2.4. QTL classification
-
-Each QTL–trait pair $(l,i)$ is classified into one of four categories:
-
-| **Category**       | **Criteria**                                                               | **Interpretation**                                                                        |
-| ------------------ | -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Not detected**   | $P_{il}^{\mathrm{marg}} \ge \alpha_1$                                      | No significant association with the trait set                                             |
-| **Shared**         | $P_{il}^{\mathrm{marg}} < \alpha_1, P_{il}^{\mathrm{cond}} \ge \alpha_2$   | Effect on trait i is fully explained by linear covariance with other traits               |
-| **Independent**    | $P_{il}^{\mathrm{cond}} < \alpha_2, \exists t: P_{tl \mid i} < \alpha_3$   | QTS has independent genetic effects on multiple traits                                    |
-| **Trait-specific** | $P_{il}^{\mathrm{cond}} < \alpha_2, \forall t: P_{tl \mid i} \ge \alpha_3$ | All genetic effects of the QTS are concentrated on trait iFully concentrated on trait $i$ |
-|                    |                                                                            |                                                                             
-
-### 0.3.1. 整合MR的动机
-
-在前述条件投影框架中，我们已经得到：
-
-- SNP 对每个性状的：
-    - **边际效应** $\theta^{\text{uncond}}$
-    - **条件独立效应** $\theta^{\text{ind}}$
-
-该分解能够区分：
-
-- trait-specific effects
-- shared (pleiotropic) effects
-
-但**仍然无法区分：**
-
-- 独立多效性（horizontal pleiotropy）
-- 介导结构（vertical / mediated effects）
-
-为此，我们进一步引入**基于个体数据的工具变量回归（MR）**，在不依赖外部 summary data 的情况下，对性状间的**方向性关系进行估计**。
-
-### 0.3.2. 条件独立性作为工具变量选择
-
-令 $n$ 表示样本量，$m$ 表示性状数量，$p$ 表示 SNP 数量。定义：
-
-- $\mathbf{G} \in \mathbb{R}^{n \times p}$：标准化基因型矩阵（每列均值为 0，方差为 1）
-    
-- $\mathbf{y}_i \in \mathbb{R}^n$：所有个体中性状 $i$ 的向量
-    
-- $\mathbf{Y} = [\mathbf{y}_1, \ldots, \mathbf{y}_m] \in \mathbb{R}^{n \times m}$：表型矩阵
-    
-
-对于假设存在 $A \to B$ 因果关系的性状对 $(A, B)$：
-
-- 性状 $A$ 是 **暴露 (exposure)**
-    
-- 性状 $B$ 是 **结果 (outcome)**
-    
-- 我们的目标是估计因果效应 $\gamma_{A \to B}$
-    
-
-#### 0.3.2.1. 边缘效应与条件效应（简述）
-In the causal inference analysis, we focus on additive genetic effects  ($\theta^a$), which serve as valid instrumental variables under the  Mendelian randomization framework.
-根据第 2.2 节，SNP $l$ 对性状 $i$ 的边缘效应为：
-
-$$\hat{\theta}_{il}^{\text{uncond}} = \frac{\mathbf{g}_l^T \mathbf{y}_i}{\mathbf{g}_l^T \mathbf{g}_l} = \frac{1}{n} \mathbf{g}_l^T \mathbf{y}_i$$
-
-条件表型（公式 4）产生独立效应：
-
-$$\hat{\theta}_{il}^{\text{ind}} = \frac{1}{n} \mathbf{g}_l^T \mathbf{y}_{i|-i}$$
-
-其中 $\mathbf{y}_{i|-i} = \mathbf{y}_i - \mathbf{Y}_{-i} \hat{\boldsymbol{\gamma}}_{i,-i}$，且 $\hat{\boldsymbol{\gamma}}_{i,-i} = (\mathbf{Y}_{-i}^T \mathbf{Y}_{-i})^{-1} \mathbf{Y}_{-i}^T \mathbf{y}_i$。
-
----
-
-### 0.3.3. 通过条件独立性选择工具变量
-
-传统的孟德尔随机化要求工具变量满足：
-
-1. **相关性 (Relevance)**：SNP 与暴露相关 ($G_l \to A$)
-    
-2. **独立性 (Independence)**：无混杂因素影响 ($G_l \perp\!\!\!\perp U$)
-    
-3. **排他性约束 (Exclusion restriction)**：对结果无直接影响（$G_l$ 仅通过 $A$ 影响 $B$）
-    
-
-标准 MR 方法通过 $P$ 值测试相关性，但无法直接评估排他性约束。我们使用条件效应来解决这个问题。
-
-#### 0.3.3.1. 选择标准
-
-如果 SNP $l$ 满足以下条件，则被选为 $A \to B$ 的有效工具变量：
-
-$$\mathcal{Z}_A = \left\{ l : \begin{array}{l} P_{Al}^{\text{marg}} < \alpha_{\text{rel}} \quad \text{(相关性)} \\[0.5ex] P_{B|A,l}^{\text{cond}} > \alpha_{\text{excl}} \quad \text{(排他性)} \\[0.5ex] |r_{ll'}| < r_{\text{LD}} \ \forall l' \in \mathcal{Z}_A, l' < l \quad \text{(LD 聚合)} \end{array} \right\}$$
-
-其中：
-
-- $P_{Al}^{\text{marg}}$ 是检验 $H_0: \theta_{Al}^{\text{uncond}} = 0$ 的 $P$ 值。
-    
-- $P_{B|A,l}^{\text{cond}}$ 是检验 $H_0: \theta_{B|A,l}^{\text{ind}} = 0$ 的 $P$ 值（来自条件 GWAS）。
-    
-- 典型阈值：$\alpha_{\text{rel}} = 5 \times 10^{-8}$，$\alpha_{\text{excl}} = 0.05$，$r_{\text{LD}} = 0.1$。
-    
-
-**核心创新**：排他性约束通过 $\theta_{B|A,l}^{\text{ind}}$ 进行 **直接** 检验，它量化了在移除对 $A$ 的依赖后 SNP 对 $B$ 的效应。如果 $\theta_{B|A,l}^{\text{ind}} \approx 0$，则该 SNP 在构造上满足排他性约束。
-
-令 $k = |\mathcal{Z}_A|$ 表示有效工具变量的数量，$\mathbf{G}_A \in \mathbb{R}^{n \times k}$ 为相应的基因型子矩阵。
-
-### 0.3.4. 2.5.4.2SLS估计与双向检验
-
-使用多工具变量时，我们采用两阶段最小二乘法 (2SLS)：
-
-#### 0.3.4.1. 第一阶段：预测暴露
-
-$$\mathbf{y}_A = \mathbf{G}_A \boldsymbol{\alpha}_A + \boldsymbol{\varepsilon}_A$$
-
-OLS 估计值为：
-
-$$\hat{\boldsymbol{\alpha}}_A = (\mathbf{G}_A^T \mathbf{G}_A)^{-1} \mathbf{G}_A^T \mathbf{y}_A$$
-
-拟合值为：
-
-$$\hat{\mathbf{y}}_A = \mathbf{G}_A \hat{\boldsymbol{\alpha}}_A = \mathbf{P}_A \mathbf{y}_A$$
-
-其中 $\mathbf{P}_A = \mathbf{G}_A (\mathbf{G}_A^T \mathbf{G}_A)^{-1} \mathbf{G}_A^T$ 是向 $\mathbf{G}_A$ 列空间投射的投影矩阵。
-
-#### 0.3.4.2. 第二阶段：估计因果效应
-
-$$\mathbf{y}_B = \gamma_{A \to B} \hat{\mathbf{y}}_A + \boldsymbol{\varepsilon}_B$$
-
-2SLS 估计量为：
-
-$$\hat{\gamma}_{A \to B}^{\text{2SLS}} = \frac{\mathbf{y}_B^T \mathbf{P}_A \mathbf{y}_A}{\mathbf{y}_A^T \mathbf{P}_A \mathbf{y}_A} = (\mathbf{y}_A^T \mathbf{P}_A \mathbf{y}_A)^{-1} \mathbf{y}_A^T \mathbf{P}_A \mathbf{y}_B$$
-
----
-
-### 0.3.5. 使用汇总统计量重新表述
-
-
-#### 0.3.5.1. SNP 级别效应向量
-
-定义：
-
-$$\hat{\boldsymbol{\theta}}_A = [\hat{\theta}_{Al_1}^{\text{marg}}, \ldots, \hat{\theta}_{Al_k}^{\text{marg}}]^T \in \mathbb{R}^k$$
-
-$$\hat{\boldsymbol{\theta}}_B = [\hat{\theta}_{Bl_1}^{\text{marg}}, \ldots, \hat{\theta}_{Bl_k}^{\text{marg}}]^T \in \mathbb{R}^k$$
-
-其中 $l_1, \ldots, l_k \in \mathcal{Z}_A$ 是选定的工具变量。
-
-#### 0.3.5.2. LD 相关矩阵
-
-样本内 LD 结构由下式捕捉：
-
-$$\mathbf{R}_A = \frac{1}{n} \mathbf{G}_A^T \mathbf{G}_A \in \mathbb{R}^{k \times k}$$
-
-其中 $R_{A,ij} = \text{cor}(\mathbf{g}_{l_i}, \mathbf{g}_{l_j})$ 是 SNP $l_i$ 和 $l_j$ 之间的 Pearson 相关系数。
-
-#### 0.3.5.3. 等价于加权汇总统计量形式
-
-将 $\hat{\theta}_{il}^{\text{uncond}}$ 和 $\mathbf{P}_A$ 的定义代入 2SLS 公式，并利用 $\mathbf{y}_i^T \mathbf{g}_l = n \hat{\theta}_{il}^{\text{uncond}}$，我们得到：
-
-$$\hat{\gamma}_{A \to B}^{\text{2SLS}} = \frac{\hat{\boldsymbol{\theta}}_A^T \mathbf{R}_A^{-1} \hat{\boldsymbol{\theta}}_B}{\hat{\boldsymbol{\theta}}_A^T \mathbf{R}_A^{-1} \hat{\boldsymbol{\theta}}_A}$$
-
-这等价于权重为 $\mathbf{W} = \mathbf{R}_A^{-1}$ 的广义最小二乘法 (GLS)，反映了工具变量之间由 LD 引起的决策结构。
-
----
-
-### 0.3.6. 方差估计
-
-在标准 2SLS 渐近线下，$\hat{\gamma}_{A \to B}^{\text{2SLS}}$ 的方差为：
-
-$$\text{Var}(\hat{\gamma}_{A \to B}^{\text{2SLS}}) = \frac{\hat{\sigma}_B^2}{\hat{\boldsymbol{\theta}}_A^T \mathbf{R}_A^{-1} \hat{\boldsymbol{\theta}}_A}$$
-
-
-
-$$\hat{\sigma}_B^2 = \frac{1}{n-k-1} (\mathbf{y}_B - \hat{\gamma}_{A \to B}^{\text{2SLS}} \hat{\mathbf{y}}_A)^T (\mathbf{y}_B - \hat{\gamma}_{A \to B}^{\text{2SLS}} \hat{\mathbf{y}}_A)$$
-
-#### 0.3.6.1. 为什么 LD 很重要
-
-LD 矩阵 $\mathbf{R}_A$ 捕捉了工具变量之间的相关性。忽略 LD（即使用 $\mathbf{W} = \mathbf{I}$）会导致标准误估计偏倚和推断失效。
-
----
-
-### 0.3.7. 异质性检验
-
-为了评估工具变量是否提供一致的估计值，我们计算 Cochran's $Q$ 统计量。定义单个 Wald 比率：
-
-$$\hat{\theta}_i = \frac{\hat{\theta}_{Bl_i}^{\text{marg}}}{\hat{\theta}_{Al_i}^{\text{marg}}}, \quad i = 1, \ldots, k$$
-
-则：
-
-$$Q = \sum_{i=1}^k \frac{(\hat{\theta}_i - \hat{\gamma}_{A \to B}^{\text{2SLS}})^2}{\text{SE}(\hat{\theta}_i)^2} \sim \chi^2_{k-1} \quad (\text{在 } H_0 \text{ 下})$$
-
-较大的 $Q$ 值 ($P < 0.05$) 可能暗示存在残余多效性、非线性关系或群体分层。此时建议进行敏感性分析。
-
----
-
-### 0.3.8. 双向估计
-
-对于性状对 $(A, B)$，我们可以测试两个方向：
-
-- $A \to B$：使用工具变量 $\mathcal{Z}_A$ 估计 $\hat{\gamma}_{A \to B}^{\text{2SLS}}$
-    
-- $B \to A$：使用工具变量 $\mathcal{Z}_B$ 估计 $\hat{\gamma}_{B \to A}^{\text{2SLS}}$
-    
-
-显著性的不对称性 ($T_{A \to B} \gg T_{B \to A}$) 为方向性依赖提供了证据。
-## 2.5. 性状间的因果推断
-
-### 2.5.1. 整合MR的动机
-
-在前述条件投影框架中，我们已经得到：
-
-- SNP 对每个性状的：
-    - **边际效应** $\theta^{\text{uncond}}$
-    - **条件独立效应** $\theta^{\text{ind}}$
-
-该分解能够区分：
-
-- trait-specific effects
-- shared (pleiotropic) effects
-
-但**仍然无法区分：**
-
-- 独立多效性（horizontal pleiotropy）
-- 介导结构（vertical / mediated effects）
-
-为此，我们进一步引入**基于个体数据的工具变量回归（MR）**，在不依赖外部 summary data 的情况下，对性状间的**方向性关系进行估计**。
-
-### 2.5.2. 通过条件独立性选择工具变量
-
-在QTLNetwork的混合线性模型中，QTS $l$ 对性状 $i$ 的边际效应 $\hat{\theta}_{il}^{\text{uncond}}$ 通过REML/MINQUE估计获得：
-
-传统的孟德尔随机化要求工具变量满足：
-
-1. **相关性 (Relevance)**：SNP 与暴露相关 ($G_l \to A$)
-    
-2. **独立性 (Independence)**：无混杂因素影响 ($G_l \perp\!\!\!\perp U$)
-    
-3. **排他性约束 (Exclusion restriction)**：对结果无直接影响（$G_l$ 仅通过 $A$ 影响 $B$）
-    
-
-标准 MR 方法通过 $P$ 值测试相关性，但无法直接评估排他性约束。我们使用条件效应来解决这个问题。
-
-
-如果 SNP $l$ 满足以下条件，则被选为 $A \to B$ 的有效工具变量：
-
-$$\mathcal{Z}_A = \left\{ l : \begin{array}{l} P_{Al}^{\text{marg}} < \alpha_{\text{rel}} \quad \text{(相关性)} \\[0.5ex] P_{B|A,l}^{\text{cond}} > \alpha_{\text{excl}} \quad \text{(排他性)} \\[0.5ex] |r_{ll'}| < r_{\text{LD}} \ \forall l' \in \mathcal{Z}_A, l' < l \quad \text{(LD 聚合)} \end{array} \right\}$$
-
-其中：
-
-- $P_{Al}^{\text{marg}}$ 是检验 $H_0: \theta_{Al}^{\text{uncond}} = 0$ 的 $P$ 值。
-    
-- $P_{B|A,l}^{\text{cond}}$ 是检验 $H_0: \theta_{B|A,l}^{\text{ind}} = 0$ 的 $P$ 值（来自条件 GWAS）。
-    
-- 典型阈值：$\alpha_{\text{rel}} = 5 \times 10^{-8}$，$\alpha_{\text{excl}} = 0.05$，$r_{\text{LD}} = 0.1$。
-    
-
-**核心创新**：排他性约束通过 $\theta_{B|A,l}^{\text{ind}}$ 进行 **直接** 检验，它量化了在移除对 $A$ 的依赖后 SNP 对 $B$ 的效应。如果 $\theta_{B|A,l}^{\text{ind}} \approx 0$，则该 SNP 在构造上满足排他性约束。
-
-令 $k = |\mathcal{Z}_A|$ 表示有效工具变量的数量，$\mathbf{G}_A \in \mathbb{R}^{n \times k}$ 为相应的基因型子矩阵。
-
-### 2.5.3. LD-aware因果效应估计
-
-设：
-
-$\hat{\boldsymbol{\theta}}_A,\ \hat{\boldsymbol{\theta}}_B$ 分别为暴露性状A与结果性状B在工具变量集合上的效应向量。
-
-我们通过如下GLS问题估计因果效应：
-
-$$\hat{\gamma}_{A \to B} = \arg\min_{\gamma} (\hat{\boldsymbol{\theta}}_B - \gamma \hat{\boldsymbol{\theta}}_A)^T \mathbf{R}^{-1} (\hat{\boldsymbol{\theta}}_B - \gamma \hat{\boldsymbol{\theta}}_A)$$
-
-其解析解为：
-
-$$\hat{\gamma}_{A \to B} = \frac{\hat{\boldsymbol{\theta}}_A^T \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_B}{\hat{\boldsymbol{\theta}}_A^T \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_A}$$
-### 2.5.4. 双向估计
-
-对于性状对 $(A, B)$，我们可以测试两个方向：
-
-- $A \to B$：使用工具变量 $\mathcal{Z}_A$ 估计 $\hat{\gamma}_{A \to B}^{\text{2SLS}}$
-    
-- $B \to A$：使用工具变量 $\mathcal{Z}_B$ 估计 $\hat{\gamma}_{B \to A}^{\text{2SLS}}$
-    
-
-显著性的不对称性 ($T_{A \to B} \gg T_{B \to A}$) 为方向性依赖提供了证据。
-
-
-
-## 2.7. Model evaluation and interpretation metrics
-
-To facilitate biological interpretation of the proposed decomposition framework, we introduce a set of summary statistics that quantify the relative contributions of independent and shared genetic effects, as well as trait-level genetic architecture.
-
-**Contribution ratio**
-
-The relative contribution of independent genetic effects is quantified as:
-
-$$\rho_{il}^{\mathrm{ind}} = \frac{(\theta_{iq}^{\mathrm{ind}})^2}{(\theta_{iq}^{\mathrm{ind}})^2 + (\theta_{iq}^{\mathrm{shared}})^2}$$
-
-which measures the proportion of variance attributable to trait-specific effects.
-
-**Conditional variance ratio (CVR)**
-
-At the trait level, we define:
-
-$$\mathrm{CVR}_{i \mid -i} = \frac{\sigma_{i \mid -i}^2}{\sigma_i^2}$$
-
-which quantifies the proportion of genetic variation that is independent of other traits. A larger CVR indicates a stronger trait-specific genetic basis.
-
-**Detection gain**
-
-To evaluate the practical benefit of conditional analysis, we define:
-
-$$\mathrm{Gain}_i = \frac{|\{l: P_{il}^{\mathrm{cond}} < \alpha_2, \, P_{il}^{\mathrm{marg}} \ge \alpha_1\}|}{|\{l: P_{il}^{\mathrm{marg}} < \alpha_1\}|}$$
-
-which measures the proportion of loci detectable only after removing cross-trait confounding.
-
-## 2.8. Simulation study 
-
-为了系统评估所提出的 **CondPED** (_Conditional Projection-based Effect Decomposition_) 方法的统计性能，我们设计了一系列模拟实验，从以下四个方面进行验证：
-
-- **检测能力 (Power)**：评估方法识别性状特异性遗传效应的能力。
-- **I 类错误控制 (Type I error)**：检验在零假设下的错误率控制。
-- **遗传效应分解准确性 (Decomposition accuracy)**：评估独立效应与共享效应的估计精度。
-- **多效性结构识别能力 (Pleiotropy classification)**：区分不同遗传机制（独立效应、共享效应、介导效应、连锁伪多效性）。
-
-### 模拟场景
-
-| **场景** | **描述**                  | **生物学目的**                                                       | **统计学目的**                            | **数学设定**                                                                                                                                                                                                                                                                                                                                       | **预期结果**                                                                                              |
-| ------ | ----------------------- | --------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **S0** | **Null scenario**       | N/A                                                             | 验证 Type I error control              | 所有 $\boldsymbol{\beta}_l = \mathbf{0}$                                                                                                                                                                                                                                                                                                         | Type I error $\le 0.05$<br>                                                                           |
-| **S1** | **Trait-specific QTL**  | 性状特异性基因<br>                                                     | 验证条件投影不削弱真实信号  <br>检验独立效应检测能力        | $\boldsymbol{\beta}_l = (0, \ldots, \beta_{li}, \ldots, 0)$<br>只有第 $i$ 个元素非零                                                                                                                                                                                                                                                                   | Power 高<br><br>正确分类为 "trait_specific"<br><br><br>$\beta_l^{\text{ind}} \approx \beta_l^{\text{true}}$ |
-| **S2** | **Fully shared QTL**    | 泛效性基因<br><br>                                                   | 验证条件投影能消除共享成分                        | $\boldsymbol{\beta}_l = (\beta, \beta, \ldots, \beta)$<br><br>潜变量显式构造共享结构                                                                                                                                                                                                                                                                      | 条件 GWAS 后信号消失<br>分类为 "shared"<br>$\beta_l^{\text{ind}} \approx \mathbf{0}$                            |
-| **S3** | **Mediated pleiotropy** | 介导效应<br><br>  <br><br>(如：SNP $\rightarrow$ 肥胖 $\rightarrow$ 血压) | 区分直接/间接效应<br>验证 Forward + Reverse 框架 | **完全介导 (S3a)：**<br>$y_1 = x_l \beta_1 + e_1$<br>$y_2 = \gamma { x_l \beta_1} + e_2$<br>$\Rightarrow \beta_{l2}^{\text{marg}} = \gamma\beta_1, \beta_{l2}^{\text{ind}} = 0$<br>**部分介导 (S3b)：**<br>$y_2 = \gamma y_1 + x_l \beta_2 + e_2$<br>$\Rightarrow \beta_{l2}^{\text{marg}} = \gamma\beta_1 + \beta_2, \beta_{l2}^{\text{ind}} = \beta_2$ | **S3a:** Trait 1 为 "trait_specific"<br>Trait 2 为 "shared"<br>**S3b:** 两者都有独立成分<br>分类为 "independent"   |
-| **S4** | **LD-linked loci**      | 连锁不平衡<br><br>(假多效性)                                             | 区分真实多效性 vs LD 伪多效性                   | $\text{SNP}_1 \to \text{Trait}_1 (\beta_{11} \neq 0, \beta_{12} = 0)$<br><br>$\text{SNP}_2 \to \text{Trait}_2 (\beta_{21} = 0, \beta_{22} \neq 0)$<br>$\text{corr}(\text{SNP}_1, \text{SNP}_2) = r_{LD}$ (如 0.6)- 一个 LD block（5–10 SNP）<br>- causal SNP 在 block 中                                                                              | 两个 SNP 都被分类为 "trait_specific"<br><br>不会被误判为真实多效性                                                      |
-
-
-
-| **场景**     | **样本量 (n)**       | **特征数 (m)** | **相关性 (ρ)**        | **效应大小**        | **重复次数** | **实验目的**    |
-| ---------- | ----------------- | ----------- | ------------------ | --------------- | -------- | ----------- |
-| **主分析**    | 1000              | 4           | 0.6                | 0.3             | 1000     | 展示各场景分类准确性  |
-| **样本量敏感性** | {500, 1000, 2000} | 4           | 0.6                | 0.3             | 500      | 展示 Power 曲线 |
-| **相关性敏感性** | 1000              | 4           | {0, 0.3, 0.6, 0.9} | 0.3             | 500      | 展示方法稳健性     |
-| **高维挑战**   | 1000              | {2, 4, 8}   | 0.6                | 0.3             | 500      | 展示可扩展性      |
-| **效应大小**   | 1000              | 4           | 0.6                | {0.1, 0.3, 0.5} | 500      | 展示检测阈值      |
-
-
-
-### 检测指标
-
-
-| 指标                           |                                                                                        |
-| ---------------------------- | -------------------------------------------------------------------------------------- |
-| power-检测能力                   | $\text{Power} = \frac{\text{正确检测到的 QTL 数}}{\text{真实 QTL 数}}$                           |
-| FDR                          |                                                                                        |
-| I 类错误率 (Type I error)        | $\text{Type I error} = \Pr(P < \alpha)$                                                |
-| Classification accuracy（最重要） | $\text{Accuracy} = \frac{\text{正确分类的 QTL 数}}{\text{总 QTL 数}}$                          |
-| trait-specific识别             |                                                                                        |
-| shared vs independent区分      |                                                                                        |
-| 遗传效应分解误差                     | $\text{MSE} = \|\hat{\theta}^{\mathrm{ind}} - \theta^{\mathrm{ind}}_{\text{true}}\|^2$ |
-| 检测增益 (Detection gain)        | $\mathrm{Gain}_i$                                                                      |
-
+**符号说明**：$\mathcal{H}_0$ 为零假设位点集，$\mathcal{H}_1$ 为模拟设定的效应位点集，$C_{li}$ 为QTL-性状对的模拟设定的分类标签分类标签（未检测到 / 协方差解释关联 / 性状特异性条件效应 / 水平多效性模式 / 推定垂直多效性），$\mathbb{1}(\cdot)$ 为指示函数。

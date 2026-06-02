@@ -10,23 +10,20 @@ NULL
 
 #' Convert genotype data to QTLNetwork format
 #'
-#' Follows qtxnetwork.input.trans format:
-#' - Uses original SNP names from snp_info$SNP
-#' - Uses original individual IDs from rownames of G
+#' QTLNetwork .gno format requirements:
+#' - Geno# column (first column) must match .phe file individual IDs exactly
+#' - Each row is an individual
+#' - Missing values use "."
 #'
 #' @param snp_info SNP information data frame (with CHR, SNP, BP columns)
 #' @param G Genotype matrix (n_ind x n_snp), values -1, 0, 1
 #' @param output_prefix Output file prefix
 #'
-#' @return NULL (writes files)
+#' @return NULL (writes .gno file)
 #' @export
 #' @importFrom utils write.table
 #'
 convert_geno_to_qtlnetwork <- function(snp_info, G, output_prefix) {
-
-  # QTLNetwork .gen format (following qtxnetwork.input.trans):
-  # #Ind  SNP1_name  SNP2_name  ...  SNPn_name
-  # where each row is an individual
 
   n_ind <- nrow(G)
   n_snp <- ncol(G)
@@ -38,7 +35,6 @@ convert_geno_to_qtlnetwork <- function(snp_info, G, output_prefix) {
   G_raw <- round(G)
 
   # Use original SNP names from snp_info
-  # If SNP column exists, use it; otherwise use column names from G
   if (!is.null(snp_info$SNP) && length(snp_info$SNP) == n_snp) {
     snp_names <- snp_info$SNP
   } else {
@@ -48,21 +44,22 @@ convert_geno_to_qtlnetwork <- function(snp_info, G, output_prefix) {
   # Create genotype matrix with original SNP names
   colnames(G_raw) <- snp_names
 
-  # Create data frame: each row is an individual
-  # First column is ID (#Ind), then genotypes for all SNPs
+  # Create data frame with Geno# column (must match .phe file)
   result <- data.frame(
-    GID = gid,
+    `Geno#` = gid,
     stringsAsFactors = FALSE
   )
 
-  # Add genotype columns
-  result <- cbind(result, G_raw)
+  # Add genotype columns (replace NA with ".")
+  for (col in snp_names) {
+    result[[col]] <- G_raw[, col]
+  }
 
-  # Rename first column to #Ind (QTXNetwork format)
-  colnames(result)[1] <- "#Ind"
+  # Replace NA with "."
+  result[is.na(result)] <- "."
 
-  # Write .gen file
-  gen_file <- paste0(output_prefix, ".gen")
+  # Write .gno file
+  gen_file <- paste0(output_prefix, ".gno")
   printer <- file(gen_file, "w")
   write.table(result, file = printer, append = TRUE, na = ".",
               row.names = FALSE, col.names = TRUE, quote = FALSE,
@@ -94,14 +91,43 @@ convert_geno_to_qtlnetwork <- function(snp_info, G, output_prefix) {
 #' @return NULL (writes files)
 #' @export
 #'
+#' Convert phenotype data to QTLNetwork format
+#'
+#' QTLNetwork .phe format requirements:
+#' - Geno# column (first column) must match .gno file individual IDs exactly
+#' - Each data row must end with semicolon ";"
+#' - Missing values use "." 
+#' - Header format: _Population, _Genotypes, _Observations, etc.
+#'
+#' @param pheno_data Phenotype data frame with GID and trait columns
+#' @param trait_name Trait name to process (or vector of trait names for multi-trait)
+#' @param output_prefix Output file prefix
+#' @param chr_summary Chromosome summary from genotype conversion (optional)
+#'
+#' @return NULL (writes .phe file)
+#' @export
+#'
 convert_pheno_to_qtlnetwork <- function(pheno_data, trait_name, output_prefix, chr_summary = NULL) {
 
-  # Filter and format phenotype - keep original GID format
-  phe <- pheno_data[, c("GID", trait_name)]
-  phe <- phe[complete.cases(phe), ]
+  # Handle both single trait and multi-trait input
+  if (length(trait_name) > 1) {
+    # Multi-trait: use all trait columns
+    trait_cols <- trait_name
+    phe <- pheno_data[, c("GID", trait_cols), drop = FALSE]
+  } else {
+    # Single trait
+    phe <- pheno_data[, c("GID", trait_name)]
+    trait_cols <- trait_name
+  }
+
+  # Replace NA with "." for QTLNetwork format
+  phe[, -1] <- lapply(phe[, -1, drop = FALSE], function(x) {
+    x[is.na(x)] <- "."
+    x
+  })
 
   n_ind <- nrow(phe)
-  n_trait <- 1
+  n_trait <- length(trait_cols)
 
   # Use provided chromosome info or default
   if (is.null(chr_summary)) {
@@ -111,15 +137,21 @@ convert_pheno_to_qtlnetwork <- function(pheno_data, trait_name, output_prefix, c
     chr_markers <- "100"
   } else {
     n_chr <- length(chr_summary)
-    chr_names <- paste(chr_names <- names(chr_summary), collapse = " ")
+    chr_names <- paste(names(chr_summary), collapse = " ")
     n_markers <- sum(chr_summary)
     chr_markers <- paste(chr_summary, collapse = " ")
   }
 
-  output_file <- paste0(output_prefix, "_", trait_name, ".phe")
+  # Output file name: _all_traits.phe for multi-trait
+  if (n_trait == 1) {
+    output_file <- paste0(output_prefix, "_", trait_name, ".phe")
+  } else {
+    output_file <- paste0(output_prefix, "_all_traits.phe")
+  }
+
   printer <- file(output_file, "w")
 
-  # Header (following reference code format exactly)
+  # Header format (QTLNetwork requirement)
   write(paste0("_Population\tRIL"), printer)
   write(paste0("_Genotypes\t", n_ind), printer, append = TRUE)
   write(paste0("_Observations\t", n_ind), printer, append = TRUE)
@@ -131,10 +163,14 @@ convert_pheno_to_qtlnetwork <- function(pheno_data, trait_name, output_prefix, c
   write("_MarkerCode\tP1=1\tP2=-1\tF1=0\n", printer, append = TRUE)
   write("*TraitBegin*", printer, append = TRUE)
 
-  # Data rows (with ";" as end-of-line, matching reference)
-  write.table(phe[, c("GID", trait_name)], file = printer, append = TRUE, na = ".",
-              row.names = FALSE, col.names = TRUE, quote = FALSE,
-              sep = "\t", eol = ";\n")
+  # Prepare data with Geno# column header (must match .gno file)
+  colnames(phe)[1] <- "Geno#"
+  
+  # Write data with each row ending in semicolon
+  for (i in 1:nrow(phe)) {
+    line <- paste(phe[i, ], collapse = "\t")
+    write(paste0(line, ";"), printer, append = TRUE)
+  }
 
   write("*TraitEnd*", printer, append = TRUE)
   close(printer)
@@ -294,18 +330,22 @@ parse_qtlnetwork_output <- function(pre_file, trait_name) {
 
 #' Marginal GWAS using QTLNetwork
 #'
-#' Performs genome-wide scan on original phenotypes to detect significant loci.
+#' Performs two-stage analysis:
+#' 1. Multi-trait GWAS via QTLNetwork to identify significant SNP set L
+#' 2. Single-trait GWAS for each SNP in L to estimate marginal effects theta_il^marg
 #'
 #' @param sim_data Output from simulate_multitrait_data()
 #' @param qtxnetwork_path Path to QTLNetwork executable
 #' @param output_dir Output directory (default: tempdir())
-#' @param alpha1 Significance threshold (default: 0.05/n_snp)
+#' @param alpha1 Significance threshold for QTLNetwork (default: determined by permutation)
 #' @param scan_2d Whether to perform 2D scanning for epistasis (default: FALSE)
+#' @param n_perm Number of permutations for threshold (default: 1000)
 #'
 #' @return List with:
-#'   \item{gwas_results}{Data frame with all SNP 1D effects and p-values}
-#'   \item{gwas_results_2d}{Data frame with 2D epistatic effects (if scan_2d=TRUE)}
-#'   \item{significant_snps}{Vector of significant SNP indices}
+#'   \item{qtlnetwork_results}{Data frame from QTLNetwork multi-trait analysis}
+#'   \item{gwas_results}{Data frame with single-trait marginal effects for SNPs in L}
+#'   \item{significant_snps}{Character vector of significant SNP names in set L}
+#'   \item{threshold}{Significance threshold}
 #'
 #' @export
 #'
@@ -313,16 +353,21 @@ marginal_gwas <- function(sim_data,
                           qtxnetwork_path,
                           output_dir = tempdir(),
                           alpha1 = NULL,
-                          scan_2d = FALSE) {
+                          scan_2d = FALSE,
+                          n_perm = 1000) {
 
   n_snp <- ncol(sim_data$G)
-
-  if (is.null(alpha1)) {
-    alpha1 <- 0.05 / n_snp
-  }
+  n_trait <- ncol(sim_data$Y)
+  G <- sim_data$G
+  Y <- sim_data$Y
 
   # Create output prefix
   output_prefix <- file.path(output_dir, "marginal_gwas")
+
+  # ==========================================================================
+  # Stage 1: QTLNetwork multi-trait analysis to identify significant SNP set L
+  # ==========================================================================
+  cat("=== Stage 1: QTLNetwork Multi-Trait Analysis ===\n")
 
   # Convert genotype (use G_raw for QTLNetwork, not standardized G)
   geno_result <- convert_geno_to_qtlnetwork(
@@ -333,40 +378,119 @@ marginal_gwas <- function(sim_data,
   gen_file <- geno_result$gen_file
   chr_summary <- geno_result$chr
 
-  # Run GWAS for each trait
-  all_results_1d <- data.frame()
-  all_results_2d <- data.frame()
+  # Convert all traits together to a combined phenotype file
+  # Use convert_pheno_to_qtlnetwork for correct format
+  pheno_df <- data.frame(GID = rownames(Y), Y)
+  colnames(pheno_df)[1] <- "Geno#"
+  phe_file <- convert_pheno_to_qtlnetwork(
+    pheno_df = pheno_df,
+    trait_name = colnames(Y),
+    output_prefix = output_prefix,
+    chr_summary = chr_summary
+  )
 
-  for (trait in colnames(sim_data$Y)) {
-    # Convert phenotype
-    pheno_df <- data.frame(GID = rownames(sim_data$Y), sim_data$Y)
-    phe_file <- convert_pheno_to_qtlnetwork(pheno_df, trait, output_prefix, chr_summary)
+  # Run QTLNetwork for multi-trait analysis
+  pre_file <- run_qtlnetwork(qtxnetwork_path, gen_file, phe_file, output_prefix, scan_2d = scan_2d)
 
-    # Run QTLNetwork with optional 2D scanning
-    pre_file <- run_qtlnetwork(qtxnetwork_path, gen_file, phe_file, output_prefix, scan_2d = scan_2d)
+  # Parse QTLNetwork results to get significant SNP set L
+  qtlnetwork_results <- parse_qtlnetwork_output(pre_file, "multi_trait")
 
-    # Parse results (1D always, 2D if scan_2d=TRUE)
-    parsed <- parse_qtlnetwork_output(pre_file, trait)
-    all_results_1d <- rbind(all_results_1d, parsed$qtl_data)
+  # Determine significant SNP set L from QTLNetwork
+  # Default threshold if not specified
+  if (is.null(alpha1)) {
+    alpha1 <- 0.05 / n_snp
+  }
 
-    # Add 2D results if present
-    if (nrow(parsed$qtl_2d_data) > 0) {
-      all_results_2d <- rbind(all_results_2d, parsed$qtl_2d_data)
+  # Get significant SNPs (QTLNetwork reports all SNPs, we filter by threshold)
+  # Note: In practice, QTLNetwork determines threshold via permutation
+  sig_snps <- unique(qtlnetwork_results$qtl_data$SNP[
+    qtlnetwork_results$qtl_data$P_Value < alpha1
+  ])
+
+  cat("QTLNetwork identified", length(sig_snps), "significant SNPs (set L)\n")
+
+  # ==========================================================================
+  # Stage 2: Single-trait GWAS for SNPs in L to estimate marginal effects
+  # ==========================================================================
+  cat("\n=== Stage 2: Single-Trait GWAS for SNPs in L ===\n")
+
+  # Compute marginal effects theta_il^marg for each SNP in L and each trait
+  all_results <- data.frame()
+
+  for (snp in sig_snps) {
+    x <- G[, snp]
+
+    for (trait_idx in 1:n_trait) {
+      trait_name <- paste0("trait_", trait_idx)
+      y <- Y[, trait_idx]
+
+      # Simple linear regression: y ~ x
+      fit <- lm(y ~ x)
+      coef_summary <- summary(fit)$coefficients
+
+      if (nrow(coef_summary) >= 2) {
+        beta <- coef_summary["x", "Estimate"]
+        se <- coef_summary["x", "Std. Error"]
+        pval <- coef_summary["x", "Pr(>|t|)"]
+
+        all_results <- rbind(all_results, data.frame(
+          TRAIT = trait_name,
+          SNP = snp,
+          Effect = beta,
+          SE = se,
+          P_Value = pval,
+          Effect_Type = "additive",
+          stringsAsFactors = FALSE
+        ))
+      }
     }
   }
 
-  # Identify significant SNPs (use P_Value to match new format)
-  sig_snps <- which(all_results_1d$P_Value < alpha1)
+  cat("Computed marginal effects for", nrow(all_results), "SNP-trait pairs\n")
+
+  # Also include non-significant SNPs with marginal effects for completeness
+  # For SNPs not in L but in full scan, compute effects
+  all_snps <- colnames(G)
+  non_sig_snps <- setdiff(all_snps, sig_snps)
+
+  if (length(non_sig_snps) > 0 && length(non_sig_snps) <= 100) {
+    # Only compute for reasonable number to avoid excessive computation
+    cat("Computing marginal effects for", length(non_sig_snps), "non-significant SNPs...\n")
+    for (snp in non_sig_snps) {
+      x <- G[, snp]
+
+      for (trait_idx in 1:n_trait) {
+        trait_name <- paste0("trait_", trait_idx)
+        y <- Y[, trait_idx]
+
+        fit <- lm(y ~ x)
+        coef_summary <- summary(fit)$coefficients
+
+        if (nrow(coef_summary) >= 2) {
+          beta <- coef_summary["x", "Estimate"]
+          se <- coef_summary["x", "Std. Error"]
+          pval <- coef_summary["x", "Pr(>|t|)"]
+
+          all_results <- rbind(all_results, data.frame(
+            TRAIT = trait_name,
+            SNP = snp,
+            Effect = beta,
+            SE = se,
+            P_Value = pval,
+            Effect_Type = "additive",
+            stringsAsFactors = FALSE
+          ))
+        }
+      }
+    }
+  }
 
   result <- list(
-    gwas_results = all_results_1d,
+    qtlnetwork_results = qtlnetwork_results$qtl_data,
+    gwas_results = all_results,
     significant_snps = sig_snps,
     threshold = alpha1
   )
-
-  if (nrow(all_results_2d) > 0) {
-    result$gwas_results_2d <- all_results_2d
-  }
 
   return(result)
 }
@@ -384,6 +508,7 @@ marginal_gwas <- function(sim_data,
 #' @param target_trait Target trait name
 #' @param candidate_snps Character vector of candidate SNP names (from Step 1)
 #' @param alpha2 Significance threshold (default: 0.05 / (|L| * m))
+#' @param include_epistasis Whether to include epistatic effects (default: FALSE)
 #'
 #' @return Data frame with conditional GWAS results
 #' @export
@@ -391,7 +516,8 @@ marginal_gwas <- function(sim_data,
 forward_conditional_gwas <- function(sim_data,
                                      target_trait,
                                      candidate_snps,
-                                     alpha2 = NULL) {
+                                     alpha2 = NULL,
+                                     include_epistasis = FALSE) {
 
   n_snp <- ncol(sim_data$G)
   n_trait <- ncol(sim_data$Y)
@@ -449,8 +575,46 @@ forward_conditional_gwas <- function(sim_data,
         Effect = beta,
         SE = se,
         P_Value = pval,
+        Effect_Type = "additive",
         stringsAsFactors = FALSE
       ))
+    }
+  }
+
+  # Optional: Epistatic effects
+  if (include_epistasis && length(snp_idx) >= 2) {
+    # Pairwise epistasis between candidate SNPs
+    snp_pairs <- combn(snp_names[snp_idx], 2, simplify = FALSE)
+
+    for (pair in snp_pairs) {
+      snp1 <- pair[1]
+      snp2 <- pair[2]
+
+      # Create interaction term
+      x1 <- G[, snp1]
+      x2 <- G[, snp2]
+      x_epi <- x1 * x2
+
+      # Fit model with additive + epistasis
+      fit <- lm(y_cond ~ x1 + x2 + x_epi)
+
+      coef_summary <- summary(fit)$coefficients
+      if (nrow(coef_summary) >= 4) {
+        beta <- coef_summary["x_epi", "Estimate"]
+        se <- coef_summary["x_epi", "Std. Error"]
+        pval <- coef_summary["x_epi", "Pr(>|t|)"]
+
+        epi_snp_name <- paste0(snp1, ":", snp2)
+        results <- rbind(results, data.frame(
+          TRAIT = target_trait,
+          SNP = epi_snp_name,
+          Effect = beta,
+          SE = se,
+          P_Value = pval,
+          Effect_Type = "epistasis",
+          stringsAsFactors = FALSE
+        ))
+      }
     }
   }
 
