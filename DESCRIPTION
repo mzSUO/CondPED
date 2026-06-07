@@ -15,17 +15,13 @@ LazyData: true
 Depends: 
     R (>= 4.0.0)
 Imports:
-    MASS,
-    Matrix,
-    data.table (>= 1.14.0),
-    ggplot2 (>= 3.3.0)
+    mvtnorm
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown,
-    covr
+    rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 7.3.3
+RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 URL: https://github.com/mzSUO/CondPED
 BugReports: https://github.com/mzSUO/CondPED/issues

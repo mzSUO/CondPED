@@ -1,0 +1,7 @@
+^\.clinerules$
+^\.vscode$
+^\.git$
+^\.gitignore$
+^data-raw$
+^CondPED-paper$
+^LICENSE\.md$

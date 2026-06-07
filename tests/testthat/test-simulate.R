@@ -1,184 +1,114 @@
-# ==============================================================================
-# Unit Tests for simulate_data.R
-# ==============================================================================
+# 保存为: tests/testthat/test-simulate.R
 
-library(testthat)
-library(Matrix)
-library(MASS)
-
-# Test 1: Basic simulation works
-test_that("simulate_multitrait_data generates data with correct dimensions", {
-  set.seed(123)
-  data <- simulate_multitrait_data(
-    n_ind = 100,
-    n_trait = 3,
-    n_snp = 50
-  )
-
-  expect_equal(nrow(data$Y), 100)
-  expect_equal(ncol(data$Y), 3)
-  expect_equal(ncol(data$G), 50)
-  expect_equal(dim(data$beta_true), c(50, 3))
-  expect_equal(dim(data$V_true), c(3, 3))
+# ========== 测试 1: M1 方差标准化 ==========
+test_that("M1 produces variance near 1", {
+  set.seed(42)
+  X <- sim_genotype(n = 500, p = 100)
+  B <- matrix(0, 100, 2)
+  B[1:10, 1] <- rnorm(10, mean = 0, sd = 0.3)
+  
+  out <- sim_phenotype_M1(X, B, Sigma_E = diag(2), maf = 0.3)
+  
+  vars <- apply(out$Y, 2, var)
+  expect_lt(abs(vars[1] - 1), 0.15)
+  expect_lt(abs(vars[2] - 1), 0.15)
 })
 
-# Test 2: Genotype is properly standardized
-test_that("genotype matrix is standardized", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 200, n_trait = 2, n_snp = 20)
-
-  # Check mean is approximately 0
-  expect_true(all(abs(colMeans(data$G)) < 0.1))
-
-  # Check variance is approximately 1
-  expect_true(all(abs(apply(data$G, 2, var) - 1) < 0.2))
+# ========== 测试 2: M2 保留真实 tau（Class 4 完全中介） ==========
+test_that("M2 preserves true tau for complete mediation", {
+  set.seed(42)
+  dat <- generate_class4(n = 5000, pve_A = 0.02, tau = 0.3)
+  
+  fit <- lm(dat$Y[, 2] ~ dat$Y[, 1])
+  tau_est <- coef(fit)[2]
+  
+  expect_lt(abs(tau_est - 0.3), 0.03)
+  expect_lt(abs(dat$params$tau_observed - 0.3), 0.03)
 })
 
-# Test 3: SNP info has correct structure
-test_that("SNP info data frame is correct", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 100, n_trait = 2, n_snp = 30)
-
-  expect_true("CHR" %in% colnames(data$snp_info))
-  expect_true("SNP" %in% colnames(data$snp_info))
-  expect_true("BP" %in% colnames(data$snp_info))
-  expect_true("MAF" %in% colnames(data$snp_info))
-  expect_equal(nrow(data$snp_info), 30)
+# ========== 测试 3: Class 5 部分中介保留直接效应（修正版） ==========
+test_that("Class 5 preserves direct effect on B", {
+  set.seed(42)
+  dat <- generate_class5(n = 5000, pve_A = 0.02, pve_B = 0.003, tau = 0.3)
+  
+  # 修正：控制 Y_A 后，检验 B 的纯直接效应（与间接效应分离）
+  resid_B <- residuals(lm(dat$Y[, 2] ~ dat$Y[, 1]))
+  pvals <- apply(dat$X[, 1:30], 2, function(x) summary(lm(resid_B ~ x))$coef[2, 4])
+  
+  # 弱直接效应（PVE=0.3%）在 n=5000 时应有 10-60% 检出率
+  expect_gt(mean(pvals < 0.05), 0.10)
+  expect_lt(mean(pvals < 0.05), 0.80)
 })
 
-# Test 4: Trait covariance matrix has correct properties
-test_that("trait covariance matrix is valid", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 100, n_trait = 3, n_snp = 50)
-
-  # Check symmetric
-  expect_equal(data$V_true, t(data$V_true), tolerance = 1e-10)
-
-  # Check positive definite (all eigenvalues > 0)
-  eig <- eigen(data$V_true, only.values = TRUE)$values
-  expect_true(all(eig > 0))
-
-  # Check diagonal is 1 (correlation matrix)
-  expect_true(all(abs(diag(data$V_true) - 1) < 1e-10))
+# ========== 测试 4: Class 6 双向因果（修正版：检验方向显著性） ==========
+test_that("M2 handles bidirectional causality", {
+  set.seed(42)
+  dat <- generate_class6(n = 5000, pve = 0.01, tau_AB = 0.2, tau_BA = 0.2)
+  
+  fit_ab <- lm(dat$Y[, 2] ~ dat$Y[, 1])
+  fit_ba <- lm(dat$Y[, 1] ~ dat$Y[, 2])
+  
+  tau_obs_ab <- coef(fit_ab)[2]
+  tau_obs_ba <- coef(fit_ba)[2]
+  
+  # 修正：双向因果下，两个回归都应显著且为正
+  # 简化式系数不等于结构参数 tau（反馈回路放大），故不检验数值
+  expect_lt(summary(fit_ab)$coef[2, 4], 0.05)  # B~A 显著
+  expect_lt(summary(fit_ba)$coef[2, 4], 0.05)  # A~B 显著
+  expect_gt(tau_obs_ab, 0.25)  # 反馈放大后应 > 0.25
+  expect_gt(tau_obs_ba, 0.25)
 })
 
-# Test 5: Heritability is approximately correct
-test_that("sample heritability matches target", {
-  set.seed(123)
-  h2_target <- 0.6
-  data <- simulate_multitrait_data(
-    n_ind = 500,
-    n_trait = 2,
-    n_snp = 100,
-    heritability = h2_target
-  )
-
-  # Compute sample heritability
-  var_g <- apply(data$G %*% data$beta_true, 2, var)
-  var_e <- apply(data$E, 2, var)
-  h2_sample <- var_g / (var_g + var_e)
-
-  # Should be within 0.15 of target (with some tolerance for sampling)
-  expect_true(abs(h2_sample[1] - h2_target) < 0.2)
+# ========== 测试 5: Class 2 压力测试协方差结构（修正版） ==========
+test_that("Covariance stress test produces expected phenotypic correlation", {
+  set.seed(42)
+  dat <- generate_covariance_stress(n = 1000, rho = 0.5, pve = 0.01)
+  
+  # 修正：Sigma_E 的 rho=0.5 是残差相关。
+  # 由于性状 A 有遗传方差（h^2 ≈ 0.30），表型相关 ≈ rho * sqrt(1-h^2_A) ≈ 0.42
+  rho_obs <- cor(dat$Y[, 1], dat$Y[, 2])
+  expect_lt(abs(rho_obs - 0.42), 0.08)
 })
 
-# Test 6: Effect decomposition is correct
-test_that("beta_ind + beta_shared = beta_true", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 200, n_trait = 3, n_snp = 50)
-
-  # Check decomposition
-  reconstructed <- data$beta_ind_true + data$beta_shared_true
-  expect_equal(reconstructed, data$beta_true, tolerance = 1e-10)
+# ========== 测试 6: 统一入口函数 ==========
+test_that("generate_condped returns correct class labels", {
+  set.seed(42)
+  
+  dat1 <- generate_condped("class1", n = 100, p = 50)
+  expect_equal(dat1$class_label, "class1")
+  expect_true(!is.null(dat1$X))
+  
+  dat4 <- generate_condped("class4", n = 100, p = 50, pve_A = 0.02)
+  expect_equal(dat4$class_label, "class4")
+  expect_true(!is.null(dat4$X))
+  
+  dat_stress <- generate_condped("stress_test", n = 100, p = 50, rho = 0.7)
+  expect_equal(dat_stress$class_label, "stress_test")
+  expect_true(!is.null(dat_stress$X))
 })
 
-# Test 7: Custom effect configuration works
-test_that("custom effect configuration is applied", {
-  set.seed(123)
-  config <- list(
-    add_trait_specific = list(
-      snp_ids = 1:5,
-      trait_ids = rep(1, 5),
-      effect_size = rep(1.0, 5)
-    ),
-    add_shared = list(
-      snp_ids = 6:10,
-      effect_size = 0.5
-    ),
-    add_independent = list(
-      snp_ids = 11:15,
-      effect_size = 0.3
-    )
-  )
-
-  data <- simulate_multitrait_data(
-    n_ind = 200,
-    n_trait = 3,
-    n_snp = 50,
-    effect_config = config
-  )
-
-  # Check that specified effects are non-zero
-  expect_true(all(data$beta_true[1:5, 1] != 0))
-  expect_true(all(data$beta_true[6:10, ] != 0))
-  expect_true(any(data$beta_true[11:15, ] != 0))
+# ========== 测试 7: M1 带残差相关时方差仍受控（新增） ==========
+test_that("M1 with rho=0.5 still standardizes variance", {
+  set.seed(42)
+  X <- sim_genotype(500, 100)
+  B <- matrix(0, 100, 2)
+  B[1:10, 1] <- rnorm(10, 0, 0.3)
+  Sigma_E <- matrix(c(1, 0.5, 0.5, 1), 2, 2)
+  out <- sim_phenotype_M1(X, B, Sigma_E, maf = 0.3)
+  
+  expect_lt(abs(var(out$Y[, 1]) - 1), 0.15)
+  expect_lt(abs(var(out$Y[, 2]) - 1), 0.15)
 })
 
-# Test 8: Shared effects follow covariance pattern
-test_that("shared effects follow covariance-mediated pattern", {
-  set.seed(123)
-  data <- simulate_multitrait_data(
-    n_ind = 500,
-    n_trait = 3,
-    n_snp = 100,
-    effect_config = list(
-      add_shared = list(
-        snp_ids = 1:10,
-        effect_size = 0.5
-      )
-    )
-  )
-
-  # For shared effects: beta[j]/beta[i] ≈ V[j,i]/V[i,i]
-  snp_ids <- 1:10
-  V <- data$V_true
-
-  for (j in 2:3) {
-    ratio_beta <- data$beta_true[snp_ids, j] / data$beta_true[snp_ids, 1]
-    ratio_V <- V[j, 1] / V[1, 1]
-    # Allow NA when beta is zero
-    valid_idx <- !is.na(ratio_beta) & abs(ratio_beta) > 1e-10
-    if (any(valid_idx)) {
-      expect_true(all(abs(ratio_beta[valid_idx] - ratio_V) < 0.01))
-    }
-  }
-})
-
-# Test 9: Relationship matrix is correct
-test_that("additive relationship matrix is valid", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 100, n_trait = 2, n_snp = 50)
-
-  # Check symmetric
-  expect_equal(data$A, t(data$A), tolerance = 1e-10)
-
-  # Check diagonal is positive (should be close to 1 for standardized G)
-  expect_true(all(diag(data$A) > 0))
-
-  # Check positive semi-definite
-  eig <- eigen(data$A, only.values = TRUE)$values
-  expect_true(all(eig > -1e-10))
-})
-
-# Test 10: Effect decomposition produces valid matrices
-test_that("effect decomposition produces valid matrices", {
-  set.seed(123)
-  data <- simulate_multitrait_data(n_ind = 200, n_trait = 3, n_snp = 30)
-
-  # Check dimensions
-  expect_equal(dim(data$beta_ind_true), dim(data$beta_true))
-  expect_equal(dim(data$beta_shared_true), dim(data$beta_true))
-
-  # Check sum equals original
-  expect_equal(data$beta_ind_true + data$beta_shared_true, data$beta_true, tolerance = 1e-10)
+# ========== 测试 8: Class 4 条件效应接近 0（CondPED 核心假设，新增） ==========
+test_that("Class 4 has near-zero conditional B effect", {
+  set.seed(42)
+  dat <- generate_class4(n = 2000, pve_A = 0.02, tau = 0.3)
+  
+  # 条件效应：控制 Y_A 后，X 对 Y_B 的回归系数应接近 0（真实 beta_B = 0）
+  cond_effects <- apply(dat$X[, 1:30], 2, function(x) {
+    coef(lm(dat$Y[, 2] ~ dat$Y[, 1] + x))[3]
+  })
+  
+  expect_lt(mean(abs(cond_effects)), 0.05)
 })
