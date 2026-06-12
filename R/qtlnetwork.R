@@ -84,10 +84,9 @@ qtxnetwork.input.trans <- function(geno_data, pheno_data,
   con <- file(gen_file, "w")
   on.exit(close(con))
 
-  writeLines("*MarkerBegin*", con)
   write.table(geno_df, file = con, append = TRUE, na = ".",
               row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
-  writeLines("*MarkerEnd*", con)
+
   close(con)
 
   # --- .phe file ---
