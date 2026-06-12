@@ -62,11 +62,17 @@ qtxnetwork.input.trans <- function(geno_data, pheno_data,
   chrName <- names(chr)
   chrCounts <- as.vector(chr)
 
-  # Genotype: transpose to row=individual, col=SNP
-  rownames(geno_data) <- geno_data[, 2]
-  geno_mat <- t(geno_data[, -c(1:3)])
-  geno_mat <- cbind(rownames(geno_mat), geno_mat)
-  colnames(geno_mat)[1] <- "#Ind"
+  # 提取基因型矩阵（去掉前3列：chr, snp_id, pos），行=SNP，列=个体
+  geno_mat <- as.matrix(geno_data[, -c(1:3)])
+  rownames(geno_mat) <- geno_data[, 2]  # SNP名作为行名
+  
+  # 转置为：行=个体，列=SNP
+  geno_t <- t(geno_mat)
+  
+  # 构造 .gen 数据框：第一列是个体名，列名行第一列为 _Genotype
+  geno_df <- as.data.frame(geno_t, stringsAsFactors = FALSE)
+  geno_df <- cbind(rownames(geno_df), geno_df)
+  colnames(geno_df) <- c("_Genotype", colnames(geno_t))
 
   traitNum <- ncol(pheno_data) - 1
   n_ind <- nrow(pheno_data)
@@ -78,14 +84,10 @@ qtxnetwork.input.trans <- function(geno_data, pheno_data,
   con <- file(gen_file, "w")
   on.exit(close(con))
 
-  writeLines(paste("_Chromosomes", length(chrName), paste(chrName, collapse = " "), sep = "\t"), con)
-  writeLines(paste("_TotalMarker", sum(chrCounts), paste(chrCounts, collapse = " "), sep = "\t"), con)
-  writeLines(ifelse(population == "RIL",
-                    "_MarkerCode\tP1=1\tP2=-1",
-                    "_MarkerCode\tP1=1\tP2=-1\tF1=0"), con)
-
-  write.table(geno_mat, file = con, append = TRUE, na = ".",
+  writeLines("*MarkerBegin*", con)
+  write.table(geno_df, file = con, append = TRUE, na = ".",
               row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t")
+  writeLines("*MarkerEnd*", con)
   close(con)
 
   # --- .phe file ---
@@ -117,6 +119,63 @@ qtxnetwork.input.trans <- function(geno_data, pheno_data,
   invisible(NULL)
 }
 
+
+# ============================================================================
+# 3. Adapter: simulation.R -> QTXNetwork
+# ============================================================================
+
+#' condped_to_qtlnetwork
+#' Bridge simulation.R output to QTXNetwork input.
+#' 
+#' simulation.R RIL output is already -1/1 coded, so no conversion needed.
+#' All markers placed on a single virtual chromosome for GWAS.
+#' 
+#' @param sim_result Output from generate_condped() or generate_class*().
+#' @param geno_output_prefix Prefix for .gen.
+#' @param pheno_output_prefix Prefix for .phe.
+#' @param population "RIL" (default) or "F2".
+#' 
+#' @return NULL (invisible)
+#' @export
+condped_to_qtlnetwork <- function(sim_result,
+                                   geno_output_prefix,
+                                   pheno_output_prefix,
+                                   population = c("RIL", "F2")) {
+
+  population <- match.arg(population)
+  X <- sim_result$X    # n x p, already -1/1 for RIL
+  Y <- sim_result$Y    # n x m
+
+  n_ind <- nrow(X)
+  p <- ncol(X)
+  m <- ncol(Y)
+
+  # Genotype: single virtual chromosome (GWAS)
+  # 注意：chr 列的值会原样写入 _Chromosomes 行。示例用 "chr1"，你也可传 "1"
+  geno_data <- data.frame(
+    chr = rep("chr1", p),
+    snp_id = colnames(X) %||% paste0("SNP", seq_len(p)),
+    pos = seq_len(p),
+    t(X),  # transpose to p x n
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  colnames(geno_data)[4:ncol(geno_data)] <- paste0("Ind", seq_len(n_ind))
+
+  # Phenotype
+  trait_names <- colnames(Y) %||% paste0("Trait", seq_len(m))
+  pheno_data <- data.frame(
+    id = paste0("Ind", seq_len(n_ind)),
+    Y,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  colnames(pheno_data) <- c("id", trait_names)
+
+  qtxnetwork.input.trans(geno_data, pheno_data,
+                        geno_output_prefix, pheno_output_prefix,
+                        population = population)
+}
 
 # ============================================================================
 # 3. Adapter: simulation.R -> QTXNetwork
