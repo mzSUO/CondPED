@@ -2,22 +2,19 @@
 % Please edit documentation in R/simulate_data.R
 \name{sim_genotype}
 \alias{sim_genotype}
-\title{模拟 SNP 基因型矩阵}
+\title{模拟基因型矩阵}
 \usage{
-sim_genotype(n, p, maf = 0.3, seed = NULL)
+sim_genotype(n, p, maf = 0.3, population = c("RIL", "F2"), seed = NULL)
 }
 \arguments{
-\item{n}{样本量。}
+\item{n}{样本量}
 
-\item{p}{SNP 位点数。}
+\item{p}{SNP 数}
 
-\item{maf}{次等位基因频率。默认 0.3。}
+\item{maf}{次等位基因频率}
 
-\item{seed}{随机种子。}
-}
-\value{
-整数矩阵，维度为 n x p，元素取值 0, 1, 2。
+\item{population}{"RIL"(-1/1) 或 "F2"(-1/0/1)}
 }
 \description{
-基于二项分布生成 Hardy-Weinberg 平衡下的基因型剂量编码。
+模拟基因型矩阵
 }

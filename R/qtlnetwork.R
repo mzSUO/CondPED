@@ -150,63 +150,6 @@ condped_to_qtlnetwork <- function(sim_result,
   m <- ncol(Y)
 
   # Genotype: single virtual chromosome (GWAS)
-  # 注意：chr 列的值会原样写入 _Chromosomes 行。示例用 "chr1"，你也可传 "1"
-  geno_data <- data.frame(
-    chr = rep("chr1", p),
-    snp_id = colnames(X) %||% paste0("SNP", seq_len(p)),
-    pos = seq_len(p),
-    t(X),  # transpose to p x n
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
-  colnames(geno_data)[4:ncol(geno_data)] <- paste0("Ind", seq_len(n_ind))
-
-  # Phenotype
-  trait_names <- colnames(Y) %||% paste0("Trait", seq_len(m))
-  pheno_data <- data.frame(
-    id = paste0("Ind", seq_len(n_ind)),
-    Y,
-    stringsAsFactors = FALSE,
-    check.names = FALSE
-  )
-  colnames(pheno_data) <- c("id", trait_names)
-
-  qtxnetwork.input.trans(geno_data, pheno_data,
-                        geno_output_prefix, pheno_output_prefix,
-                        population = population)
-}
-
-# ============================================================================
-# 3. Adapter: simulation.R -> QTXNetwork
-# ============================================================================
-
-#' condped_to_qtlnetwork
-#' Bridge simulation.R output to QTXNetwork input.
-#' 
-#' simulation.R RIL output is already -1/1 coded, so no conversion needed.
-#' All markers placed on a single virtual chromosome for GWAS.
-#' 
-#' @param sim_result Output from generate_condped() or generate_class*().
-#' @param geno_output_prefix Prefix for .gen.
-#' @param pheno_output_prefix Prefix for .phe.
-#' @param population "RIL" (default) or "F2".
-#' 
-#' @return NULL (invisible)
-#' @export
-condped_to_qtlnetwork <- function(sim_result,
-                                   geno_output_prefix,
-                                   pheno_output_prefix,
-                                   population = c("RIL", "F2")) {
-
-  population <- match.arg(population)
-  X <- sim_result$X    # n x p, already -1/1 for RIL
-  Y <- sim_result$Y    # n x m
-
-  n_ind <- nrow(X)
-  p <- ncol(X)
-  m <- ncol(Y)
-
-  # Genotype: single virtual chromosome (GWAS)
   geno_data <- data.frame(
     chr = rep("1", p),
     snp_id = colnames(X) %||% paste0("SNP", seq_len(p)),

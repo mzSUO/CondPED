@@ -2,19 +2,12 @@
 % Please edit documentation in R/simulate_data.R
 \name{sd_from_pve}
 \alias{sd_from_pve}
-\title{根据 PVE 计算效应大小的标准差}
+\title{由 PVE 反推效应量标准差
+RIL: Var(X)=4\emph{maf}(1-maf); F2: Var(X)=2\emph{maf}(1-maf)}
 \usage{
-sd_from_pve(pve, maf = 0.3)
-}
-\arguments{
-\item{pve}{目标表型方差解释率。}
-
-\item{maf}{次等位基因频率。默认 0.3。}
-}
-\value{
-效应大小的标准差。
+sd_from_pve(pve, maf = 0.3, population = c("RIL", "F2"))
 }
 \description{
-公式：sd = sqrt(PVE / Var(X))，Var(X) = 2 * maf * (1 - maf)。
+由 PVE 反推效应量标准差
+RIL: Var(X)=4\emph{maf}(1-maf); F2: Var(X)=2\emph{maf}(1-maf)
 }
-\keyword{internal}

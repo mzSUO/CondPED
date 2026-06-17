@@ -2,28 +2,22 @@
 % Please edit documentation in R/simulate_data.R
 \name{sim_phenotype_M2}
 \alias{sim_phenotype_M2}
-\title{因果链模型 M2}
+\title{M2: 因果链模型
+Y = (X\emph{B + eps) \%}\% solve(I - t(Tau))
+协方差传播: Sigma_Y = (I-Tau)^{-1} \%\emph{\% Sigma_base \%}\% (I-t(Tau))^{-1}}
 \usage{
-sim_phenotype_M2(X, B, Tau, Sigma_E, maf = 0.3, seed = NULL)
-}
-\arguments{
-\item{X}{基因型矩阵。}
-
-\item{B}{SNP 效应矩阵，p x m。}
-
-\item{Tau}{m x m 因果路径矩阵。}
-
-\item{Sigma_E}{m x m 残差协方差矩阵。}
-
-\item{maf}{次等位基因频率。默认 0.3。}
-
-\item{seed}{随机种子。}
+sim_phenotype_M2(
+  X,
+  B,
+  Tau,
+  Sigma_E,
+  epi_pairs = NULL,
+  epi_effects = NULL,
+  seed = NULL
+)
 }
 \description{
-生成式：
-Y_base = X * B + E
-Y = Y_base \%*\% t(solve(I_m - Tau))
-}
-\details{
-方差控制在因果变换之前完成，保留真实 Tau 尺度。
+M2: 因果链模型
+Y = (X\emph{B + eps) \%}\% solve(I - t(Tau))
+协方差传播: Sigma_Y = (I-Tau)^{-1} \%\emph{\% Sigma_base \%}\% (I-t(Tau))^{-1}
 }

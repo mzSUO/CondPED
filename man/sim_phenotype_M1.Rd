@@ -2,22 +2,17 @@
 % Please edit documentation in R/simulate_data.R
 \name{sim_phenotype_M1}
 \alias{sim_phenotype_M1}
-\title{基础模型 M1}
+\title{M1: 基础模型（无因果链）}
 \usage{
-sim_phenotype_M1(X, B, Sigma_E, maf = 0.3, seed = NULL)
-}
-\arguments{
-\item{X}{基因型矩阵，n x p。}
-
-\item{B}{SNP 效应矩阵，p x m。}
-
-\item{Sigma_E}{m x m 残差协方差矩阵（相关结构保留，方差被动态调整）。}
-
-\item{maf}{次等位基因频率（用于计算期望遗传方差）。默认 0.3。}
-
-\item{seed}{随机种子。}
+sim_phenotype_M1(
+  X,
+  B,
+  Sigma_E,
+  epi_pairs = NULL,
+  epi_effects = NULL,
+  seed = NULL
+)
 }
 \description{
-生成式：Y = X * B + E
-使用期望方差（deterministic）控制残差，避免小样本随机波动导致截断失真。
+M1: 基础模型（无因果链）
 }
