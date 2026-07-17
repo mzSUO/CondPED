@@ -6,6 +6,30 @@
 \usage{
 sim_genotype(n, p, maf = 0.3, population = c("RIL", "F2"), seed = NULL)
 }
+\arguments{
+\item{n}{整数。个体数（样本量）。}
+
+\item{p}{整数。SNP 数量。}
+
+\item{maf}{数值。次等位基因频率，默认0.3。}
+
+\item{population}{字符串。"RIL"（重组自交系）或"F2"（F2群体），默认"RIL"。}
+
+\item{seed}{整数或NULL。随机种子，保证结果可重复。}
+}
+\value{
+n×p 数值矩阵，行名为"Ind1...Indn"，列名为"SNP1...SNPp"。
+}
 \description{
-模拟基因型矩阵
+根据指定群体类型生成 n×p 基因型矩阵，支持 RIL 和 F2 群体编码。
+}
+\details{
+【编码方式】
+RIL (-1/+1)：纯合亲本1=-1，纯合亲本2=+1，由 maf 控制频率
+F2 (-1/0/+1)：纯合亲本1=-1，杂合子=0，纯合亲本2=+1
+用二项分布(n=2, p=maf)生成后重编码
+
+【基因型方差】
+RIL: Var(X) = 4 × maf × (1-maf)，maf=0.3时约为0.84
+F2:  Var(X) = 2 × maf × (1-maf)，maf=0.3时约为0.42
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/conditional.R
 \name{fit_conditional_model}
 \alias{fit_conditional_model}
-\title{估计候选位点的条件遗传效应}
+\title{估计候选位点的条件遗传效应（Layer 2 核心函数）}
 \usage{
 fit_conditional_model(
   Y_cond,
@@ -14,31 +14,59 @@ fit_conditional_model(
 )
 }
 \arguments{
-\item{Y_cond}{n × m 条件表型矩阵（由 \code{compute_conditional_phenotype} 返回的 \code{$Y_cond}）。}
+\item{Y_cond}{n×m（或nK×m）条件表型矩阵。
+由 compute_conditional_phenotype()$Y_cond 返回。
+多环境时为长格式（nK行，K为环境数）。}
 
-\item{X_loci}{n × k 候选位点基因型矩阵，\strong{仅包含 Layer 1 显著位点}。
-列名应与 \code{qtl_data$QTL} 中的位点 ID 一致。}
+\item{X_loci}{n×k（或nK×k）候选位点基因型矩阵。
+仅包含 Layer 1 显著位点，列名为 SNP ID。
+多环境时需与 Y_cond 的行对齐（nK行）。}
 
-\item{alpha2}{Bonferroni 校正显著性阈值。
-若为 \code{NULL}（默认），自动计算为 \code{0.05 / (k × m)}。}
+\item{alpha2}{数值或NULL。Bonferroni 校正显著性阈值。
+NULL=自动计算 0.05/(k×m)，其中k=候选位点数，m=性状数。}
+
+\item{method}{字符串。"OLS"（单环境，默认）或"LMM"（多环境）。
+\itemize{
+\item "OLS"：每个性状独立拟合 y* ~ x_snp + 其他位点
+\item "LMM"：用 lme4 拟合含环境随机效应的混合模型，需提供 env 参数
+}}
+
+\item{env}{因子或字符向量，长度n（单环境）或nK（多环境）。
+指示每个观测所属的环境，仅在 method="LMM" 时必须提供。}
+
+\item{epi_pairs}{列表，每个元素为 c(l1, l2)，指定一对上位性位点（按列索引）。
+NULL=无上位性（默认）。上位性项作为额外固定效应加入模型。}
 }
 \value{
-数据框，每行对应一个（性状, 位点）对，包含：
-\item{trait}{性状名}
-\item{locus}{位点 ID}
-\item{theta_cond}{条件效应点估计}
-\item{se_cond}{标准误}
-\item{pval_cond}{p 值}
-\item{sig_cond}{是否达到 Bonferroni 校正显著性（逻辑值）}
+数据框，每行对应一个（性状, 位点）对，包含列：
+\describe{
+\item{trait}{性状名（来自 Y_cond 的列名）}
+\item{locus}{位点 ID（来自 X_loci 的列名）}
+\item{theta_cond}{条件效应点估计（OLS/LMM的斜率系数）}
+\item{se_cond}{条件效应标准误}
+\item{pval_cond}{双侧 p 值（OLS用t检验，LMM用Satterthwaite自由度近似）}
+\item{sig_cond}{逻辑值。是否达到 Bonferroni 校正显著性（pval < alpha2）}
+\item{method}{实际使用的估计方法："OLS"/"LMM"/"OLS_fallback"（LMM失败时退化）}
+}
 }
 \description{
-对每个性状的条件表型拟合线性模型，提取条件效应 θ^cond 及其显著性。
-对应论文 Eq.8 的简化实现（在模拟中用 OLS 近似混合模型）。
+对 Layer 1 检出的每个候选位点，在每个性状的条件表型上拟合线性模型，
+提取条件效应 theta_cond 及其统计显著性，作为多效性机制分类的统计指纹。
 }
 \details{
-显著性判定标准：\code{pval_cond < alpha2}（Bonferroni 校正，控制 FWER）。
-条件效应不显著不意味着直接效应不存在，仅反映当前样本量下未检测到。
+【条件效应的生物学含义】
+theta_cond_{il} = 控制其他所有性状后，位点l对性状i的独立直接遗传效应
+\itemize{
+\item 如果 theta_cond 显著（pval_cond < alpha2）：位点对该性状有独立直接效应
+\item 如果 theta_cond 不显著：该性状的边际关联可能完全来自与其他性状的共变
 }
-\seealso{
-\code{\link{compute_conditional_phenotype}}
+
+【统计指纹定义】
+n_cond = 显著 theta_cond 的性状数
+n_cond = 1：只有一个性状保留显著条件效应 → 进入 Layer 3 区分 Class 1 vs Class 3
+n_cond ≥ 2：多个性状保留显著条件效应 → 进入 Layer 3 区分 Class 2/4/5
+
+【注意事项】
+条件效应不显著≠直接效应不存在，仅反映当前样本量下未检测到显著性。
+Bonferroni 校正为保守检验，低功效时可能产生假阴性。
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/gwas_marginal.R
 \name{layer1_marginal_scan}
 \alias{layer1_marginal_scan}
-\title{Layer 1 — Marginal Multi-Trait Association Scan}
+\title{Layer 1 — 多性状边际关联扫描}
 \usage{
 layer1_marginal_scan(
   X,
@@ -15,66 +15,63 @@ layer1_marginal_scan(
 )
 }
 \arguments{
-\item{X}{n x p numeric matrix. Genotype matrix with column names
-(SNP IDs). Additive coding expected (e.g. -1/0/1 or 0/1/2).}
+\item{X}{n×p 数值矩阵。基因型矩阵，需有列名（SNP ID）。
+支持 RIL（-1/1）、F2（-1/0/1）等加性编码方式。}
 
-\item{Y}{n x m numeric matrix. Phenotype matrix with column names
-(trait names). Individuals must be in the same order as X.}
+\item{Y}{n×m 数值矩阵。表型矩阵，需有列名（性状名）。
+个体顺序必须与 X 一致。}
 
-\item{Z}{n x q numeric matrix of fixed covariates (excluding intercept),
-or NULL. If environment labels are provided via \code{env},
-dummy-coded environment indicators are appended here
-automatically.}
+\item{Z}{n×q 数值矩阵，额外固定协变量（不含截距），或 NULL。
+若同时提供 env，环境哑变量会自动追加到 Z 后面。}
 
-\item{env}{Factor or character vector of length n indicating environment
-membership, or NULL for single-environment data. When
-provided, environment is treated as a FIXED effect (dummy
-coding), consistent with Eq. 1 where e_{ik} is identifiable
-only through its interaction structure; the main environmental
-shift is absorbed into the fixed part.}
+\item{env}{因子或字符向量，长度n，指示每个观测所属的环境。
+NULL=单环境数据（默认）。
+提供时：自动哑变量编码（丢弃第一个水平避免共线性），
+环境主效应作为固定协变量纳入，等价于论文 Eq.1 中的 e_{ik} 固定部分。}
 
-\item{alpha}{Family-wise significance level. Default 0.05.
-Bonferroni threshold = alpha / (p * m).}
+\item{alpha}{家族显著性水平，默认0.05。
+Bonferroni 阈值 = alpha / (p × m)。}
 
-\item{min_maf}{Minimum minor allele frequency filter applied before
-scanning. SNPs below this threshold are excluded.
-Default 0.01.}
+\item{min_maf}{MAF 过滤阈值，默认0.01。
+低于此阈值的 SNP 在扫描前被移除。}
 
-\item{verbose}{Logical. Print progress. Default TRUE.}
+\item{verbose}{逻辑值。是否打印进度信息，默认TRUE。}
 }
 \value{
-A named list with elements:
+命名列表，包含：
 \describe{
-\item{class1}{Character vector of SNP IDs significant for exactly
-one trait (n_marg = 1). Directly annotated as Class 1
-(trait-specific association) without entering Layer 2.}
-\item{layer2}{Character vector of SNP IDs significant for two or more
-traits (n_marg >= 2). Pleiotropy candidates forwarded to Layer 2.}
-\item{snp_summary}{Data frame (one row per significant SNP) with
-columns: snp_id, n_marg, and for each trait i: beta_i, se_i, p_i,
-sig_i.}
-\item{scan_result}{Long-format data frame (one row per SNP x trait
-pair) with all effect estimates and raw p-values, including
-non-significant SNPs. Useful for downstream threshold sensitivity
-analyses.}
-\item{threshold}{The Bonferroni-corrected p-value threshold used.}
-\item{n_tested}{Number of SNPs passing MAF filter.}
-\item{alpha}{The alpha level supplied.}
+\item{class1}{字符向量。仅在一个性状上显著（n_marg=1）的SNP ID。
+直接标注为 Class 1（性状特异性关联），不进入 Layer 2。}
+\item{layer2}{字符向量。在两个及以上性状上显著（n_marg≥2）的SNP ID。
+作为多效性候选位点，进入 Layer 2 条件分析。}
+\item{snp_summary}{数据框，每个显著SNP一行。
+列：snp_id、n_marg、以及每个性状的 beta_i、se_i、p_i、sig_i。
+按 n_marg 降序排列（多效性候选在前）。}
+\item{scan_result}{长格式数据框，每个（SNP，性状）对一行，
+包含所有SNP（含不显著）的效应估计和原始p值。
+用于 Layer 3 MR 的工具变量筛选（需要全量扫描结果）。}
+\item{threshold}{数值。实际使用的 Bonferroni 校正阈值。}
+\item{n_tested}{整数。通过 MAF 过滤后实际扫描的 SNP 数。}
+\item{alpha}{数值。传入的显著性水平 alpha。}
 }
 }
 \description{
-Performs a per-SNP, per-trait OLS scan (Eq. 1, additive fixed effects)
-with Bonferroni correction across all (SNP, trait) pairs. Classifies
-significant loci by the number of traits showing marginal association.
+对每个SNP、每个性状执行 OLS 扫描（论文 Eq.1，仅加性固定效应），
+采用 Bonferroni 校正（alpha/(p×m)）控制所有（SNP，性状）对的家族错误率。
+根据每个位点在多少个性状上显著，将候选位点分为两类：
+\itemize{
+\item class1（n_marg=1）：仅一个性状显著，直接标注为性状特异性关联
+\item layer2（n_marg≥2）：多性状显著，作为多效性候选位点进入 Layer 2
 }
-\examples{
-\dontrun{
-dat <- generate_dataset_II(n = 500, p = 1000, seed = 42)
-l1 <- layer1_marginal_scan(dat$X, dat$Y, alpha = 0.05)
-
-cat("Class 1 loci:", l1$class1, "\n")
-cat("Layer 2 candidates:", l1$layer2, "\n")
-print(l1$snp_summary)
 }
+\details{
+【多环境支持】
+传入 env 参数时，自动将环境转为哑变量编码并加入协变量矩阵 Z。
+环境作为固定效应，吸收不同环境的整体表型偏移，保持 OLS 框架。
+这与 Layer 2 的混合模型（随机截距+随机斜率）不同：
+Layer 1 只需控制主效应（固定），无需估计方差成分（随机）。
 
+【MAF过滤】
+扫描前过滤低频 SNP（默认 MAF<0.01），避免极端低频变异导致数值不稳定。
+MAF 计算方式兼容 RIL（-1/1编码）和 F2（-1/0/1编码）。
 }

@@ -38,21 +38,21 @@ compute_conditional_phenotype(Y_residual, V = NULL, tol_orthogonality = 0.01)
 }
 \examples{
 \dontrun{
-  # 生成示例数据（ρ = 0.5 的双性状场景）
-  set.seed(42)
-  n  <- 500
-  Sigma <- matrix(c(1, 0.5, 0.5, 1), 2, 2)
-  Y  <- MASS::mvrnorm(n, mu = c(0, 0), Sigma = Sigma)
-  colnames(Y) <- c("A", "B")
+# 生成示例数据（ρ = 0.5 的双性状场景）
+set.seed(42)
+n <- 500
+Sigma <- matrix(c(1, 0.5, 0.5, 1), 2, 2)
+Y <- MASS::mvrnorm(n, mu = c(0, 0), Sigma = Sigma)
+colnames(Y) <- c("A", "B")
 
-  result <- compute_conditional_phenotype(Y)
+result <- compute_conditional_phenotype(Y)
 
-  # 验证正交性：应接近 0
-  cov(result$Y_cond[, "A"], Y[, "B"])
+# 验证正交性：应接近 0
+cov(result$Y_cond[, "A"], Y[, "B"])
 
-  # 验证方差等价：应接近 Schur 补
-  var(result$Y_cond[, "A"])
-  result$schur["A"]
+# 验证方差等价：应接近 Schur 补
+var(result$Y_cond[, "A"])
+result$schur["A"]
 }
 
 }

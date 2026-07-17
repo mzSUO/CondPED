@@ -2,11 +2,11 @@
 % Please edit documentation in R/simulate_data.R
 \name{generate_dataset_I}
 \alias{generate_dataset_I}
-\title{Dataset I: 无因果 (τ=0, ρ=0)，验证 Class 1 / Class 2}
+\title{Dataset I：无因果场景（tau=0），验证 Class 1 / Class 2}
 \usage{
 generate_dataset_I(
   n,
-  p = 1000,
+  p = 1000L,
   class1_pve = 0.05,
   class2_pve = 0.05,
   rho = 0,
@@ -17,6 +17,47 @@ generate_dataset_I(
   seed = NULL
 )
 }
+\arguments{
+\item{n}{整数。样本量。}
+
+\item{p}{整数。SNP数量，默认1000。}
+
+\item{class1_pve}{数值。Class 1位点对Trait A的PVE，默认0.05（5\%）。}
+
+\item{class2_pve}{数值。Class 2位点对每个性状的PVE，默认0.05。}
+
+\item{rho}{数值。残差相关系数，默认0（两性状残差独立）。}
+
+\item{epi_pairs}{列表。NULL=无上位性。}
+
+\item{epi_effects}{矩阵。NULL=无上位性。}
+
+\item{maf}{数值。次等位基因频率，默认0.3。}
+
+\item{population}{字符串。"RIL"或"F2"，默认"RIL"。}
+
+\item{seed}{整数或NULL。}
+}
+\value{
+命名列表：Y, G, eps, X, truth, dataset="I", seed, h2_obs。
+}
 \description{
-Dataset I: 无因果 (τ=0, ρ=0)，验证 Class 1 / Class 2
+【数据集设计】
+生成模型：M1（无因果链）
+Y_A = X × beta_A + eps_A
+Y_B = X × beta_B + eps_B  （残差独立，rho=0）
+}
+\details{
+【位点布局（p=1000）】
+SNP1-2  → Class 1（性状特异）：仅影响 Trait A，Trait B 无直接效应
+SNP3-4  → Class 2（水平多效）：独立影响 Trait A 和 Trait B
+SNP5+   → Null：无遗传效应
+
+【效应量设计】
+同类内两个位点效应比例为1:0.8，避免联合OLS中的完全共线性
+两个位点同向（不取反），确保条件投影正常工作
+
+【用途】
+Sim 1（Figure 1）的核心数据集，验证 Layer 1 的统计校准性质：
+Type I error（QQ图）、Power/FDR（曲线）、Coverage/RMSE（条件效应）
 }

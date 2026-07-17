@@ -2,23 +2,37 @@
 % Please edit documentation in R/gwas_marginal.R
 \name{.ols_scan_one_trait}
 \alias{.ols_scan_one_trait}
-\title{Vectorised single-SNP OLS for one trait}
+\title{单性状向量化单SNP-OLS扫描（内部函数）}
 \usage{
 .ols_scan_one_trait(y, X, Z = NULL)
 }
 \arguments{
-\item{y}{Numeric vector length n. Phenotype for one trait.}
+\item{y}{数值向量，长度n。单个性状的表型值。}
 
-\item{X}{n x p numeric matrix. Genotype matrix (additive coding).}
+\item{X}{n×p 数值矩阵。基因型矩阵（加性编码）。}
 
-\item{Z}{n x q numeric matrix of covariates (intercept already excluded;
-NULL if no covariates).}
+\item{Z}{n×q 数值矩阵，协变量矩阵（不含截距）。
+NULL=仅包含截距。多环境时传入哑变量矩阵。}
 }
 \value{
-Data frame with columns: beta, se, t_stat, p_value (length p).
+数据框，p行，包含列：beta（效应量）、se（标准误）、
+t_stat（t统计量）、p_value（双侧p值）。
 }
 \description{
-Fits y ~ 1 + Z + x for every column of X simultaneously using the
-closed-form OLS estimator, avoiding the overhead of calling lm() in a loop.
+对 X 的每一列同时拟合 y ~ 1 + Z + x，使用闭合OLS公式，
+避免逐SNP调用 lm() 的开销。速度约为循环版本的50-100倍。
+}
+\details{
+【算法步骤】
+\enumerate{
+\item QR分解偏出协变量（含截距），得到残差化的 y_r 和 X_r
+\item 向量化 OLS：beta_l = (x_r_l' y_r) / (x_r_l' x_r_l)
+\item 利用 RSS_l = ||y_r||² - beta_l² × (x_r_l' x_r_l) 计算残差方差
+\item 计算 SE 和 t 统计量，导出双侧 p 值
+}
+
+【偏出协变量的含义】
+与每个SNP模型都包含协变量等价，但只做一次QR分解（计算量从 p 次降为1次）。
+QR残差化等价于 Frisch-Waugh-Lovell 定理的应用。
 }
 \keyword{internal}

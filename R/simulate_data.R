@@ -121,8 +121,8 @@ beta_from_pve <- function(pve, maf = 0.3, population = c("RIL", "F2")) {
 #' 【残差相关】rho>0时，性状间残差协方差 = rho × sqrt(sigma_i²×sigma_j²)
 #'   这模拟共同环境因素（如温度、施肥）导致的跨性状表型相关
 #'
-#' @param B        p×m SNP效应矩阵。B[l,i]=位点l对性状i的加性效应。
-#' @param Tau      m×m因果效应矩阵。Tau[j,i]=性状i对性状j的因果效应。
+#' @param B        p×m SNP效应矩阵。B[l_i]=位点l对性状i的加性效应。
+#' @param Tau      m×m因果效应矩阵。Tau[j_i]=性状i对性状j的因果效应。
 #' @param var_x    数值。基因型方差（RIL:4×maf×(1-maf)）。
 #' @param rho      数值。残差相关系数，默认0（性状间残差独立）。
 #' @param max_iter 整数。最大迭代次数，默认200。
@@ -207,12 +207,12 @@ compute_residual_variance <- function(B, Tau, var_x,
 #'   本函数也被 sim_phenotype_M2 内部调用，生成"基础表型"后再传播因果链。
 #'
 #' @param X           n×p 基因型矩阵。
-#' @param B           p×m 加性效应矩阵。B[l,i]=位点l对性状i的效应。
+#' @param B           p×m 加性效应矩阵。B[l_i]=位点l对性状i的效应。
 #' @param Sigma_E     m×m 残差协方差矩阵（由 compute_residual_variance 计算）。
 #' @param epi_pairs   列表，每个元素为 c(l1, l2)，定义一对上位性位点。
 #'   NULL=无上位性（默认）。
 #' @param epi_effects 数值矩阵，行数=上位性对数，列数=m。
-#'   元素[k,i]=第k对位点对性状i的上位性效应 aa_{l1l2,i}。
+#'   元素[k_i]=第k对位点对性状i的上位性效应 aa_{l1l2,i}。
 #' @param seed        整数或NULL。随机种子。
 #' @return 命名列表：Y（n×m表型矩阵），G（n×m遗传值），eps（n×m残差）。
 #' @export
@@ -261,7 +261,7 @@ sim_phenotype_M1 <- function(X, B, Sigma_E,
 #'
 #' @param X           n×p 基因型矩阵。
 #' @param B           p×m 加性效应矩阵。
-#' @param Tau         m×m 因果效应矩阵。Tau[j,i]=性状i对性状j的因果效应。
+#' @param Tau         m×m 因果效应矩阵。Tau[j_i]=性状i对性状j的因果效应。
 #' @param Sigma_E     m×m 残差协方差（已由 compute_residual_variance 校准）。
 #' @param epi_pairs   同 sim_phenotype_M1。
 #' @param epi_effects 同 sim_phenotype_M1。
