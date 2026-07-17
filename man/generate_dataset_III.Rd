@@ -3,15 +3,18 @@
 \name{generate_dataset_III}
 \alias{generate_dataset_III}
 \title{Dataset III: 双向因果 A↔B (τ_AB=τ_BA=0.2)，验证 Class 5
-含 IV-仅A(10) + IV-仅B(10)}
+IV-仅A(10) + IV-仅B(10)，PVE=0.005（随机）}
 \usage{
 generate_dataset_III(
   n,
   p = 1000,
-  class5_pve = 0.01,
+  class5_pve = 0.05,
   tau_AB = 0.2,
   tau_BA = 0.2,
-  iv_pve = 0.02,
+  iv_pve = 0.005,
+  rho = 0,
+  epi_pairs = NULL,
+  epi_effects = NULL,
   maf = 0.3,
   population = "RIL",
   seed = NULL
@@ -19,5 +22,5 @@ generate_dataset_III(
 }
 \description{
 Dataset III: 双向因果 A↔B (τ_AB=τ_BA=0.2)，验证 Class 5
-含 IV-仅A(10) + IV-仅B(10)
+IV-仅A(10) + IV-仅B(10)，PVE=0.005（随机）
 }

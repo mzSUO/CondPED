@@ -2,7 +2,7 @@
 % Please edit documentation in R/mr.R
 \name{estimate_causal_gls}
 \alias{estimate_causal_gls}
-\title{GLS 因果效应估计 + Bootstrap 标准误}
+\title{GLS causal effect estimation with Bootstrap standard error}
 \usage{
 estimate_causal_gls(
   theta_exp,
@@ -16,37 +16,46 @@ estimate_causal_gls(
 )
 }
 \arguments{
-\item{theta_exp}{命名数值向量：工具变量对暴露性状的边际效应。
-名称为位点 ID，顺序需与 \code{theta_out} 一致。}
+\item{theta_exp}{Named numeric vector. IV marginal effects on exposure.
+Names must be SNPID strings matching those in theta_out.}
 
-\item{theta_out}{命名数值向量：工具变量对结果性状的边际效应。}
+\item{theta_out}{Named numeric vector. IV marginal effects on outcome.}
 
-\item{ld_matrix}{k×k 矩阵（|r| 值）。\code{NULL} 时用单位矩阵（适用于独立 SNP）。}
+\item{ld_matrix}{Optional k x k matrix of |r| values for the IV set.
+NULL uses the identity matrix (appropriate after LD pruning).}
 
-\item{Y}{n×m 个体水平表型矩阵（含暴露和结果性状）。提供时使用 Bootstrap SE。}
+\item{Y}{n x m individual-level phenotype matrix. Required for bootstrap SE.}
 
-\item{X_iv}{n×k 工具变量基因型矩阵（列与 theta_exp 顺序一致）。}
+\item{X_iv}{n x k genotype matrix for the IV set (columns = IVs used).}
 
-\item{exp_col}{暴露性状在 Y 中的列索引（默认 1）。}
+\item{exp_col}{Integer. Column index of exposure trait in Y. Default 1.}
 
-\item{out_col}{结果性状在 Y 中的列索引（默认 2）。}
+\item{out_col}{Integer. Column index of outcome trait in Y. Default 2.}
 
-\item{n_boot}{Bootstrap 重抽样次数（默认 1000）。}
+\item{n_boot}{Integer. Number of bootstrap resamples. Default 1000.}
 }
 \value{
-列表，包含：
-\item{gamma}{因果效应点估计}
-\item{se}{标准误（Bootstrap 或解析近似）}
-\item{z}{Wald 检验统计量}
-\item{pval}{双侧 p 值}
-\item{n_iv}{使用的工具变量数}
-\item{method}{"bootstrap" 或 "delta"}
+Named list:
+\describe{
+\item{gamma}{Point estimate of causal effect}
+\item{se}{Standard error (bootstrap or delta method)}
+\item{z}{Wald test statistic}
+\item{pval}{Two-sided p-value}
+\item{n_iv}{Number of IVs used}
+\item{method}{"bootstrap" or "delta"}
+}
 }
 \description{
-实现论文 Eq.7：
-\deqn{\hat{\gamma}_{A \to B} = \frac{\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_B}{\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_A}}
+Implements Eq. 7 of the paper:
+\deqn{
+  \hat{\gamma}_{A \to B} =
+  \frac{\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_B}
+       {\hat{\boldsymbol{\theta}}_A^\top \mathbf{R}^{-1} \hat{\boldsymbol{\theta}}_A}
+}
 }
 \details{
-LD 修剪后 R ≈ I，GLS 退化为加权最小二乘（WLS）。
-标准误通过以个体为单元的 Bootstrap 重抽样估计（n_boot 次）。
+After LD pruning (|r| < 0.1), R approximates the identity matrix and GLS
+reduces to weighted least squares (WLS) with weights w_i = 1 / Var(theta_i).
+Standard error is estimated via individual-level bootstrap (n_boot resamples)
+when Y and X_iv are provided, or by the delta method otherwise.
 }

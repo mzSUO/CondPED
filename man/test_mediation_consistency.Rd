@@ -2,29 +2,37 @@
 % Please edit documentation in R/mr.R
 \name{test_mediation_consistency}
 \alias{test_mediation_consistency}
-\title{反向条件一致性验证}
+\title{Reverse conditional consistency test for MR-supported causal pathway}
 \usage{
 test_mediation_consistency(theta_B_marg, theta_B_cond)
 }
 \arguments{
-\item{theta_B_marg}{命名数值向量：工具变量对结果性状 B 的\strong{边际}效应。}
+\item{theta_B_marg}{Named numeric vector. IV marginal effects on outcome B.
+Names are SNPID strings.}
 
-\item{theta_B_cond}{命名数值向量：工具变量对结果性状 B 的\strong{条件}效应（控制 A 后）。
-名称顺序不必相同；函数内部按名称对齐。}
+\item{theta_B_cond}{Named numeric vector. IV conditional effects on B given A.
+Names are SNPID strings. Alignment is done by name intersection internally.}
 }
 \value{
-列表，包含：
-\item{pval}{单侧 Wilcoxon 符号秩检验 p 值}
-\item{consistent}{逻辑值，P < 0.05 时为 TRUE}
-\item{delta_median}{δ 的中位数（正值表示效应系统减弱）}
-\item{delta}{各工具变量的效应差 δ_l 向量}
+Named list:
+\describe{
+\item{pval}{One-sided Wilcoxon signed-rank p-value}
+\item{consistent}{TRUE if pval < 0.05}
+\item{delta_median}{Median of delta_l = theta_marg - theta_cond (positive = attenuation)}
+\item{delta}{Named numeric vector of per-IV delta values}
+}
 }
 \description{
-验证 MR 支持的因果通路 A→B 的介导机制：
-控制上游性状 A 后，工具变量对下游性状 B 的效应是否系统性减弱？
+For a causal pathway A -> B supported by MR, verifies that controlling for
+the upstream trait A systematically attenuates IV effects on the downstream
+trait B. Tests whether delta_l = theta_{Bl}^{marg} - theta_{B|A,l}^{cond}
+is systematically greater than zero using a one-sided Wilcoxon signed-rank test.
 }
 \details{
-使用单侧 Wilcoxon 符号秩检验，检验配对差值
-δ_l = θ_{Bl}^{marg} − θ_{B|A,l}^{cond} 是否随机大于零。
-P < 0.05 视为通过一致性检验。
+Interpretation:
+\itemize{
+\item delta > 0 for all IVs -> complete mediation (Class 3)
+\item delta > 0 but theta_{B|A}^{cond} still significant -> partial mediation (Class 4)
+\item delta not systematically positive -> inconsistent with A -> B
+}
 }

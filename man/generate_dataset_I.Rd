@@ -7,8 +7,11 @@
 generate_dataset_I(
   n,
   p = 1000,
-  class1_pve = 0.01,
-  class2_pve = 0.01,
+  class1_pve = 0.05,
+  class2_pve = 0.05,
+  rho = 0,
+  epi_pairs = NULL,
+  epi_effects = NULL,
   maf = 0.3,
   population = "RIL",
   seed = NULL

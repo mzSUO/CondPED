@@ -21,7 +21,7 @@ Suggests:
     knitr,
     rmarkdown
 VignetteBuilder: knitr
-RoxygenNote: 7.3.2
 Roxygen: list(markdown = TRUE)
 URL: https://github.com/mzSUO/CondPED
 BugReports: https://github.com/mzSUO/CondPED/issues
+Config/roxygen2/version: 8.0.0

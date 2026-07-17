@@ -3,17 +3,19 @@
 \name{generate_dataset_II}
 \alias{generate_dataset_II}
 \title{Dataset II: 单向因果 A→B (τ=0.3)，验证 Class 1 / Class 3 / Class 4
-含 10 个 IV 辅助位点（仅影响 A，不纳入分类）}
+IV 辅助位点（仅影响 A，PVE=0.005，随机）}
 \usage{
 generate_dataset_II(
   n,
   p = 1000,
-  class1_pve = 0.01,
-  class3_pve_A = 0.02,
-  class4_pve_A = 0.02,
-  class4_pve_B = 0.003,
+  class1_pve = 0.05,
+  class3_pve = 0.05,
+  class4_pve = 0.05,
   tau = 0.3,
-  iv_pve = 0.02,
+  iv_pve = 0.005,
+  rho = 0,
+  epi_pairs = NULL,
+  epi_effects = NULL,
   maf = 0.3,
   population = "RIL",
   seed = NULL
@@ -21,5 +23,5 @@ generate_dataset_II(
 }
 \description{
 Dataset II: 单向因果 A→B (τ=0.3)，验证 Class 1 / Class 3 / Class 4
-含 10 个 IV 辅助位点（仅影响 A，不纳入分类）
+IV 辅助位点（仅影响 A，PVE=0.005，随机）
 }

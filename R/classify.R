@@ -1,107 +1,149 @@
 # ==============================================================================
-# classify.R — 五类分类决策（删除原 Class 2 后顺延编号）
-# ==============================================================================
-# 编号对照：
-#   新 Class 1  = 原 Class 1  (Trait-specific)
-#   新 Class 2  = 原 Class 3  (Horizontal pleiotropy)
-#   新 Class 3  = 原 Class 4  (Vertical pleiotropy – complete mediation)
-#   新 Class 4  = 原 Class 5  (Vertical pleiotropy – partial mediation)
-#   新 Class 5  = 原 Class 6  (Bidirectional / confounded)
+# classify.R — Five-class locus classification
 # ==============================================================================
 
-#' 单个位点的五类分类判定
+
+#' Classify a single locus into one of five mechanistic classes
 #'
-#' 依据论文 Table 1（删除原 Class 2 协方差诱导后顺延编号），综合边际显著性、
-#' 条件投影显著性与双向 MR 结果，对单个 SNP 进行最终分类。
+#' Integrates Layer 1 marginal significance, Layer 2 conditional projection,
+#' and Layer 3 bidirectional MR to assign a mechanistic class to each locus,
+#' following Table 1 of the paper.
 #'
-#' @param n_marg_sig 整数。该位点在 Layer 1 边际分析中显著关联的性状数。
-#'   来源：\code{qtxnetwork.layer1.screen()$snp_count$n_sig}。
-#' @param cond_sig_by_trait 命名逻辑向量。Layer 2 条件投影后，各性状是否仍显著。
-#'   名称必须与 \code{traits} 对应。例：\code{c(TraitA = TRUE, TraitB = FALSE)}。
-#' @param mr_results \code{bidirectional_mr()} 返回值（列表），或 \code{NULL}。
-#'   若为 \code{NULL}，表示消融实验（无 Layer 3）。
-#' @param traits 长度为 2 的字符向量，如 \code{c("TraitA", "TraitB")}。
-#'   用于单向 MR 时判定 outcome 性状。消融实验可省略。
+#' @param n_marg_sig Integer. Number of traits with significant marginal
+#'   association at Layer 1. From l1$snp_summary$n_marg.
+#' @param cond_sig_by_trait Named logical vector. Whether each trait retains
+#'   significant conditional association after Layer 2 projection. Names must
+#'   match trait names in \code{traits}.
+#'   Example: \code{c(Trait1 = TRUE, Trait2 = FALSE)}.
+#' @param mr_results Return value of \code{bidirectional_mr()}, or \code{NULL}.
+#'   NULL triggers ablation mode (Layer 1 + 2 only, no MR).
+#' @param traits Character vector of length 2. Trait names c("TraitA", "TraitB").
 #'
-#' @return 字符串：\code{"null"}, \code{"class1"}, \code{"class2"},
-#'   \code{"class3"}, \code{"class4"}, \code{"class5"}。
+#' @return Character string: one of \code{"null"}, \code{"class1"},
+#'   \code{"class2"}, \code{"class3"}, \code{"class4"}, \code{"class5"}.
 #'
 #' @details
-#' \strong{消融实验降级逻辑}：当 \code{mr_results = NULL} 时，
-#' 若 \code{n_cond_sig < 2}（投影后仅剩一个性状显著），框架无法区分
-#' 真实 Class 1（单性状）与 Class 3（完全中介，原 Class 4），
-#' 因此保守归为 \code{"class1"}，以此证明 Layer 3 MR 的必要性。
+#' Classification logic:
+#'
+#' \strong{n_marg = 0}: null (not detected at Layer 1).
+#'
+#' \strong{n_marg = 1}: The locus is marginally significant for only one trait.
+#'   This pattern covers two distinct biological scenarios:
+#'   \itemize{
+#'     \item True Class 1 (trait-specific): the locus directly affects only one
+#'       trait, and the global MR is non-significant.
+#'     \item True Class 3 (complete mediation): the locus directly affects the
+#'       upstream trait only; the indirect effect on the downstream trait
+#'       (tau * beta) is too weak to reach genome-wide significance at Layer 1.
+#'       In this case the global MR A->B is significant, and the locus shows
+#'       no significant conditional effect on the outcome trait.
+#'   }
+#'   Both scenarios produce n_marg = 1 at Layer 1. MR is therefore applied to
+#'   n_marg = 1 loci as well, to rescue Class 3 loci that were missed at Layer 1.
+#'   This is why Layer 3 is indispensable: without MR, all n_marg = 1 loci
+#'   would be conservatively labelled Class 1.
+#'
+#' \strong{n_marg >= 2}: Pleiotropy candidate; enters full Layer 2 + Layer 3
+#'   pipeline.
+#'
+#' \strong{Ablation mode} (\code{mr_results = NULL}): MR is skipped.
+#'   n_marg = 1 -> Class 1 (cannot distinguish from Class 3).
+#'   n_marg >= 2, n_cond >= 2 -> Class 2 (horizontal pleiotropy).
+#'   n_marg >= 2, n_cond < 2  -> Class 1 (conservative downgrade).
+#'   This misclassification of Class 3 loci in ablation mode demonstrates
+#'   that directional causal evidence is indispensable.
 #'
 #' @export
 classify_locus <- function(n_marg_sig,
                            cond_sig_by_trait,
                            mr_results = NULL,
                            traits     = NULL) {
-
+  
   n_marg_sig <- as.integer(n_marg_sig)
-
-  # ── 0. 防御：输入校验 ─────────────────────────────────────────────────────
+  
+  # ── Input validation ────────────────────────────────────────────────────────
   if (is.null(traits) && is.null(names(cond_sig_by_trait))) {
-    stop("traits 与 cond_sig_by_trait 名称不能同时为空。")
+    stop("At least one of 'traits' or names(cond_sig_by_trait) must be provided.")
   }
   if (!is.null(traits) && length(traits) != 2L) {
-    stop("traits 必须是长度为 2 的字符向量。")
+    stop("'traits' must be a character vector of length 2.")
   }
-
-  # ── 1. Null：边际不显著 ───────────────────────────────────────────────────
+  
+  # ── Null: not detected at Layer 1 ──────────────────────────────────────────
   if (is.na(n_marg_sig) || n_marg_sig == 0L) {
     return("null")
   }
-
-  # ── 2. Class 1：仅单一性状边际显著，不进入 Layer 2/3 ─────────────────────
-  if (n_marg_sig == 1L) {
-    return("class1")
+  
+  # ── Internal helper: resolve outcome trait name ─────────────────────────────
+  get_outcome <- function(ab_significant) {
+    if (ab_significant) {
+      if (!is.null(traits)) traits[2L] else names(cond_sig_by_trait)[2L]
+    } else {
+      if (!is.null(traits)) traits[1L] else names(cond_sig_by_trait)[1L]
+    }
   }
-
-  # ── 3. 多效性候选（≥2 个性状边际显著）────────────────────────────────────
+  
+  # ── n_marg = 1: trait-specific or complete mediation ───────────────────────
+  #
+  # Both Class 1 and Class 3 can produce n_marg = 1 at Layer 1:
+  #   Class 1: locus affects one trait directly; MR non-significant.
+  #   Class 3: locus affects upstream trait; indirect effect on downstream
+  #            trait too weak for Layer 1 detection; MR A->B significant
+  #            and outcome conditional effect non-significant.
+  #
+  # MR is applied here to distinguish the two cases.
+  if (n_marg_sig == 1L) {
+    
+    # Ablation mode: cannot distinguish Class 1 vs Class 3 without MR
+    if (is.null(mr_results)) return("class1")
+    
+    mr_AB_sig <- isTRUE(mr_results$AB$sig)
+    mr_BA_sig <- isTRUE(mr_results$BA$sig)
+    
+    # MR non-significant in either direction -> Class 1
+    if (!mr_AB_sig && !mr_BA_sig) return("class1")
+    
+    # MR significant in one direction: check outcome conditional effect
+    #   outcome cond non-significant -> complete mediation -> Class 3
+    #   outcome cond significant     -> locus has direct effect on outcome
+    #                                   despite n_marg=1 (edge case) -> Class 1
+    if (mr_AB_sig || mr_BA_sig) {
+      outcome_trait    <- get_outcome(mr_AB_sig)
+      outcome_cond_sig <- isTRUE(cond_sig_by_trait[outcome_trait])
+      return(if (!outcome_cond_sig) "class3" else "class1")
+    }
+  }
+  
+  # ── n_marg >= 2: pleiotropy candidate ──────────────────────────────────────
   n_cond_sig <- sum(cond_sig_by_trait, na.rm = TRUE)
-
-  # ── 4. 消融实验：无 MR，仅 Layer 1+2 ──────────────────────────────────────
+  
+  # Ablation mode: Layer 1 + 2 only
   if (is.null(mr_results)) {
-    # n_cond >= 2 → 水平多效（Class 2，原 Class 3）
-    # n_cond <  2 → 保守归为 Class 1（无法区分完全中介 vs 单性状）
     return(if (n_cond_sig >= 2L) "class2" else "class1")
   }
-
-  # ── 5. 提取双向 MR 显著性 ──────────────────────────────────────────────────
+  
   mr_AB_sig <- isTRUE(mr_results$AB$sig)
   mr_BA_sig <- isTRUE(mr_results$BA$sig)
-
-  # ── 6. Class 5：双向均显著（反馈/混杂，原 Class 6）────────────────────────
-  if (mr_AB_sig && mr_BA_sig) {
-    return("class5")
-  }
-
-  # ── 7. 双向均不显著 ────────────────────────────────────────────────────────
-  #   n_cond >= 2 → Class 2（水平多效，原 Class 3）
-  #   n_cond <  2 → Class 1（保守降级；实践中协方差诱导已被 QTLNetwork 过滤）
+  
+  # Class 5: bidirectional MR significant (feedback loop or confounding)
+  if (mr_AB_sig && mr_BA_sig) return("class5")
+  
+  # MR non-significant in either direction
+  #   n_cond >= 2 -> Class 2 (horizontal pleiotropy, independent direct effects)
+  #   n_cond <  2 -> Class 1 (conservative downgrade)
   if (!mr_AB_sig && !mr_BA_sig) {
     return(if (n_cond_sig >= 2L) "class2" else "class1")
   }
-
-  # ── 8. 单向 MR 显著：区分完全中介 vs 部分中介（Class 3 vs Class 4）──────
-  #   防御：若投影后两个性状均不显著，但 MR 显著，数据矛盾，保守降级
-  if (n_cond_sig == 0L) {
-    return("class1")
-  }
-
-  # 判定 outcome 性状：
-  #   AB 显著 → A 为暴露，B 为结局 → 检查 B 的条件效应
-  #   BA 显著 → B 为暴露，A 为结局 → 检查 A 的条件效应
-  if (mr_AB_sig) {
-    outcome_trait <- if (!is.null(traits)) traits[2L] else names(cond_sig_by_trait)[2L]
-  } else {
-    outcome_trait <- if (!is.null(traits)) traits[1L] else names(cond_sig_by_trait)[1L]
-  }
-
+  
+  # MR significant in one direction: distinguish complete vs partial mediation
+  # Guard: if no conditional effects remain after projection but MR is
+  # significant, data are contradictory; downgrade conservatively.
+  if (n_cond_sig == 0L) return("class1")
+  
+  outcome_trait    <- get_outcome(mr_AB_sig)
   outcome_cond_sig <- isTRUE(cond_sig_by_trait[outcome_trait])
-
-  # outcome 条件效应仍显著 → 存在直接效应 + 间接效应 → 部分中介（Class 4，原 Class 5）
-  # outcome 条件效应不显著 → 仅间接效应 → 完全中介（Class 3，原 Class 4）
+  
+  # outcome cond significant   -> direct + indirect effect -> Class 4 (partial)
+  # outcome cond non-significant -> indirect effect only   -> Class 3 (complete)
   if (outcome_cond_sig) "class4" else "class3"
 }

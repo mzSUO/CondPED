@@ -1,321 +1,362 @@
 # =============================================================================
-# CondPED Example Analysis Pipeline
+# CondPED Example Analysis Pipeline (Server Version)
 # =============================================================================
-# 本脚本使用 CondPED 自带的模拟数据生成器，演示完整分析流程。
-# 运行前请确保：
-#   1. 处于 CondPED 包根目录
-#   2. 已安装/加载 CondPED（开发阶段用 devtools::load_all）
+# Environment : Linux server
+# R package   : /data2/smz/CondPED
 #
 # Usage:
+#   cd /data2/smz/CondPED
 #   Rscript inst/examples/run_condPED_example.R
-#   # 或在 RStudio 里:
-#   # setwd("/Users/mingzhe/Desktop/CondPED")
-#   # devtools::load_all(".")
-#   # source("inst/examples/run_condPED_example.R")
+#
+# Analysis Steps:
+#   Step 1: Simulate Dataset II (unidirectional A -> B, tau = 0.3)
+#   Step 2: Layer 1 - Marginal Multi-Trait Scan (OLS + Bonferroni)
+#   Step 3: Layer 2 - Conditional Projection
+#   Step 4: Layer 3 - Bidirectional Mendelian Randomization
+#   Step 5: QTL Classification (5-class mechanism assignment)
+#   Step 6: Validation against Ground Truth
+# =============================================================================
 
-# ------------------------------------------------------------------------------
-# 0. 加载环境
-# ------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# 0. Load environment
+# -----------------------------------------------------------------------------
+pkg_root <- "/data2/smz/CondPED"
+if (getwd() != pkg_root) {
+  setwd(pkg_root)
+  message("Working directory set to: ", pkg_root)
+}
+
 if (requireNamespace("devtools", quietly = TRUE)) {
   devtools::load_all(".")
 } else {
-  stop("Please install devtools: install.packages('devtools')")
+  source("R/simulate_data.R")
+  source("R/gwas_marginal.R")
+  source("R/conditional.R")
+  source("R/mr.R")
+  source("R/classify.R")
 }
 
 cat("
 ================================================================================
-              CondPED (Conditional Projection-based Effect Decomposition)
-                          Real Data Example
+         CondPED (Conditional Projection-based Effect Decomposition)
+                         Server Example
 ================================================================================
 
-This example demonstrates the complete CondPED analysis pipeline using
-internally simulated multi-trait data with known ground truth.
+Environment:
+  R package root : /data2/smz/CondPED
 
 Analysis Steps:
-  Step 1: Simulate Dataset II (unidirectional A -> B, tau = 0.3)
-  Step 2: Layer 1 - Marginal Multi-Trait Scan
-  Step 3: Layer 2 - Conditional Projection
-  Step 4: Layer 3 - Bidirectional Mendelian Randomization
-  Step 5: QTL Classification (5-class mechanism assignment)
-  Step 6: Validation against Ground Truth
+  Step 1 : Simulate Dataset II  (A -> B, tau = 0.3)
+  Step 2 : Layer 1 - Marginal OLS scan with Bonferroni correction
+  Step 3 : Layer 2 - Conditional projection
+  Step 4 : Layer 3 - Bidirectional Mendelian Randomization
+  Step 5 : QTL classification (Class 1 - 5)
+  Step 6 : Validation against ground truth
 
 ================================================================================
 ")
 
+
 # =============================================================================
-# Step 1: Simulate Multi-Trait Data (Dataset II)
+# Step 1: Simulate Dataset II
 # =============================================================================
 cat("=== Step 1: Generating Dataset II (A -> B, tau = 0.3) ===\n\n")
 
-set.seed(42)
-
 dat <- generate_dataset_II(
-  n            = 1000,
-  p            = 1000,           
-  class1_pve   = 0.01,
-  class3_pve_A = 0.02,
-  class4_pve_A = 0.02,
-  class4_pve_B = 0.003,
-  tau          = 0.3,
-  iv_pve       = 0.02,
-  maf          = 0.3,
-  population   = "RIL",
-  seed         = 42
+  n = 1000,
+  p = 1000,
+  class1_pve = 0.05,
+  class3_pve = 0.05,
+  class4_pve_A = 0.05,
+  class4_pve_B = 0.05,
+  tau = 0.3,
+  seed = 42
 )
 
+cat("Simulated Data Summary:\n")
+cat("  - Individuals (n)       :", nrow(dat$Y), "\n")
+cat("  - SNPs (p)              :", ncol(dat$X), "\n")
+cat("  - Traits (m)            :", ncol(dat$Y), "\n")
+cat("  - True causal effect tau:", dat$Tau[2, 1], "\n")
+cat("  - Var(Trait1)           :", round(var(dat$Y[, 1]), 4), "\n")
+cat("  - Var(Trait2)           :", round(var(dat$Y[, 2]), 4), "\n")
+cat("  - Observed h2           :", round(dat$h2_obs, 4), "\n")
+cat("  - Class 1 loci          :", sum(dat$truth$class == "class1"), "\n")
+cat("  - Class 3 loci          :", sum(dat$truth$class == "class3"), "\n")
+cat("  - Class 4 loci          :", sum(dat$truth$class == "class4"), "\n")
+cat("  - IV loci               :", sum(dat$truth$is_IV), "\n")
+cat("  - Null loci             :", sum(dat$truth$class == "null"), "\n\n")
 
-cat("Simulated Data Summarys:\n")
-cat("  - Individuals (n):", nrow(dat$Y), "\n")
-cat("  - SNPs (p):", ncol(dat$X), "\n")
-cat("  - Traits (m):", ncol(dat$Y), "\n")
-cat("  - True causal effect (tau):", dat$Tau[2, 1], "\n")
-cat("  - Phenotypic variance (Trait 1):", round(var(dat$Y[, 1]), 4), "\n")
-cat("  - Phenotypic variance (Trait 2):", round(var(dat$Y[, 2]), 4), "\n")
-cat("  - Class 1 loci (B-specific):", sum(dat$truth$class == "class1"), "\n")
-cat("  - Class 3 loci (complete mediation):", sum(dat$truth$class == "class3"), "\n")
-cat("  - Class 4 loci (partial mediation):", sum(dat$truth$class == "class4"), "\n")
-cat("  - IV auxiliary loci:", sum(dat$truth$is_IV), "\n")
-cat("  - Null loci:", sum(dat$truth$class == "null"), "\n\n")
+cat("True effect sizes (loci 1-16):\n")
+print(dat$truth[1:16, c("SNP", "class", "beta_A", "beta_B")])
+cat("\n")
 
-# 提取真值供后续验证
-ground_truth <- dat$truth
-iv_idx <- which(dat$truth$is_IV)
 
 # =============================================================================
-# Step 2: Layer 1 - Marginal Multi-Trait Scan
+# Step 2: Layer 1 - Marginal Multi-Trait Scan (OLS + Bonferroni)
 # =============================================================================
-cat("=== Step 2: Layer 1 - Marginal Multi-Trait Scan ===\n\n")
+cat("=== Step 2: Layer 1 - Marginal OLS Scan ===\n\n")
 
-# --- 2.1 确定输出路径（当前工作目录下创建临时目录）---
-output_dir <- file.path(getwd(), "inst", "simulation", "results", "pilot")
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+# Statistical model (Eq. 1, additive fixed effects, single environment):
+#   y_ij = mu_i + a_il * x_jl + eps_ij,   eps_ij ~ N(0, sigma^2_i)
+#
+# Bonferroni threshold: alpha / (p * m)
+# Loci with n_marg = 1  -> Class 1 (trait-specific), no further testing
+# Loci with n_marg >= 2 -> pleiotropy candidates, forwarded to Layer 2
 
-prefix <- file.path(output_dir, "dataset_II")
+alpha1 <- 0.05
 
-# --- 2.2 转换数据为 QTLNetwork 格式 ---
-condped_to_qtlnetwork(
-  sim_result          = dat,
-  geno_output_prefix  = prefix,
-  pheno_output_prefix = prefix,
-  population          = "RIL"
+l1 <- layer1_marginal_scan(
+  X       = dat$X,
+  Y       = dat$Y,
+  alpha   = alpha1,
+  verbose = TRUE
 )
 
-# 验证文件是否生成
-list.files(output_dir, pattern = "\\.(gen|phe)$")
+cat("\nLayer 1 Screening Results:\n")
+cat("  - Bonferroni threshold  :", formatC(l1$threshold, format = "e", digits = 2), "\n")
+cat("  - SNPs tested           :", l1$n_tested, "\n")
+cat("  - Total candidates      :", nrow(l1$snp_summary), "\n")
+cat("  - Class 1 candidates    :", length(l1$class1), "\n")
+cat("  - Layer 2 candidates    :", length(l1$layer2), "\n")
 
-# --- 2.3 运行 QTLNetwork ---
-# ⚠️ 注意：这里需要服务器上的 QTLNetwork 可执行文件路径
-# 如果你在 Mac 上开发，但 QTLNetwork 在 Linux 服务器上，需要把 .gen/.phe 传到服务器跑
+cat("\nSignificant loci summary:\n")
+print(l1$snp_summary)
 
-qtxnetwork_path <- "/data2/smz/QTXNetwork_4.0_MT/build/QTXNetwork"  # 改成你的实际路径
-
-qtxnetwork.perform(
-  qtxnetwork_path = qtxnetwork_path,
-  gen_file        = paste0(prefix, ".gen"),
-  phe_file        = paste0(prefix, ".phe"),
-  pre_file        = paste0(prefix, ".pre"),
-  scan_2d         = FALSE,   # 先只跑 1D，快
-  qtx_mode        = 2        # 多性状模式
+# Validate against ground truth
+cat("\n")
+val_l1 <- validate_layer1(
+  l1,
+  dat$truth,
+  true_classes = c("class1", "class3", "class4")
 )
 
-# --- 2.4 解析 .pre 文件 ---
-# pheno_data 需要与 .phe 文件中的 trait 名称一致
-pheno_for_parse <- data.frame(
-  id = rownames(dat$Y),
-  dat$Y,
-  check.names = FALSE
-)
-colnames(pheno_for_parse) <- c("id", colnames(dat$Y))
-
-qtl_out <- qtxnetwork.output.trans(
-  pheno_data = pheno_for_parse,
-  pre_file   = paste0(prefix, ".pre"),
-  scan_2d    = FALSE
-)
-
-# 查看检出结果
-cat("QTLNetwork 检出位点:\n")
-print(head(qtl_out$qtl_data, 20))
-
-# --- 2.5 Layer 1 筛选 ---
-# alpha 建议用 Bonferroni 校正：0.05 / p
-alpha1 <- 0.05 / ncol(dat$X)
-
-l1 <- qtxnetwork.layer1.screen(qtl_out, alpha = alpha1)
-
-cat("\nLayer 1 筛选结果:\n")
-cat("  - Class 1 候选 (仅1个性状显著):", length(l1$class1), "\n")
-cat("  - Layer 2 候选 (≥2个性状显著):", length(l1$layer2), "\n")
-cat("  - 各 SNP 显著性状数:\n")
-print(head(l1$snp_count, 20))
 
 # =============================================================================
 # Step 3: Layer 2 - Conditional Projection
 # =============================================================================
 cat("=== Step 3: Layer 2 - Conditional Projection ===\n\n")
 
-# ---------------------------------------------------------------------------
-# NOTE: 以下调用假设你的条件投影函数已实现。
-# 核心逻辑：对每个候选位点，控制其他性状后检验残差关联。
-# ---------------------------------------------------------------------------
+# Construct conditional phenotypes:
+#   y*_ijk = y_ijk - y_{-i,jk}^T * gamma_{i,-i}
+# where gamma_{i,-i} = V_{-i}^{-1} C_{-i,i} (projection coefficients)
 
-# 示例：假设 layer2_project() 已存在
-# l2 <- layer2_project(X = dat$X, Y = dat$Y, candidates = l1$candidates)
+Y_residual <- scale(dat$Y, center = TRUE, scale = FALSE)
 
-# 占位：模拟条件投影结果
-n_cond <- sapply(l1$candidates, function(j) {
-  true_class <- dat$truth$class[j]
-  if (true_class == "class1") return(1)   # 仅 B 显著
-  if (true_class == "class3") return(1)   # 仅 A 显著（条件后）
-  if (true_class == "class4") return(2)   # A,B 均显著
-  return(1)
-})
+cond_pheno <- compute_conditional_phenotype(Y_residual)
 
-l2 <- data.frame(
-  SNP      = dat$truth$SNP[l1$candidates],
-  n_cond   = n_cond,
-  theta_A  = rnorm(length(l1$candidates), 0, 0.1),
-  theta_B  = rnorm(length(l1$candidates), 0, 0.1),
-  p_cond_A = runif(length(l1$candidates)),
-  p_cond_B = runif(length(l1$candidates))
+cat("Conditional phenotype diagnostics:\n")
+print(cond_pheno$diagnostics)
+cat("\n")
+
+# Fit conditional model for all significant loci (Class 1 + Layer 2 candidates)
+all_sig_loci <- unique(c(l1$class1, l1$layer2))
+X_layer2 <- dat$X[, all_sig_loci, drop = FALSE]
+
+# Bonferroni correction for conditional tests: alpha / (|L| * m)
+alpha2 <- 0.05 / (length(all_sig_loci) * ncol(dat$Y))
+
+cond_eff <- fit_conditional_model(
+  Y_cond = cond_pheno$Y_cond,
+  X_loci = X_layer2,
+  alpha2 = alpha2,
+  method = "OLS" # single environment simulation; switch to "LMM" for
+  # multi-environment real data (requires env argument)
 )
 
-cat("Layer 2 Results (Placeholder):\n")
-print(head(l2, 10))
-cat("\n")
+n_cond_by_snp <- tapply(cond_eff$sig_cond, cond_eff$locus, sum)
+cat("Conditional effects:\n")
+print(cond_eff[, c(
+  "trait", "locus", "theta_cond", "se_cond",
+  "pval_cond", "sig_cond", "method"
+)])
+
 
 # =============================================================================
 # Step 4: Layer 3 - Bidirectional Mendelian Randomization
 # =============================================================================
 cat("=== Step 4: Layer 3 - Bidirectional MR ===\n\n")
 
-# ---------------------------------------------------------------------------
-# NOTE: 以下调用假设你的 MR 函数已实现。
-# 需要 IV 位点索引 (iv_idx) 从 truth 中提取。
-# ---------------------------------------------------------------------------
+# IV selection criteria (Section 2.3.1):
+#   (1) Relevance    : P_marg < l1$threshold  (Bonferroni-corrected)
+#   (2) Exclusion    : P_cond > 0.05  (no significant direct effect on outcome)
+#   (3) LD pruning   : |r_ll'| < 0.1
+#   (4) Instrument   : F-statistic > 10
+# 注意：IV 排他性筛选现在由 bidirectional_mr 内部按 MR 方向现算成对条件投影
+# （outcome | exposure），不再消费 Step 3 的全条件 cond_eff。
+# cond_eff 仅用于 Step 5 的 5 类分类（n_cond 指纹）。
 
-# 示例：假设 layer3_mr() 已存在
-# l3 <- layer3_mr(X = dat$X, Y = dat$Y, iv_idx = iv_idx, l2 = l2)
-
-# 占位：模拟 MR 结果
-l3 <- list(
-  AB = list(gamma = 0.28, se = 0.05, pval = 0.001, sig = TRUE),
-  BA = list(gamma = 0.02, se = 0.06, pval = 0.75,  sig = FALSE)
+marginal_df <- data.frame(
+  TRAIT = l1$scan_result$trait,
+  SNPID = l1$scan_result$snp_id,
+  A = l1$scan_result$beta,
+  SE = l1$scan_result$se,
+  P_Value = l1$scan_result$p_value,
+  stringsAsFactors = FALSE
 )
 
-cat("MR Results (Placeholder):\n")
-cat("  - A -> B: gamma =", round(l3$AB$gamma, 3),
-    ", SE =", round(l3$AB$se, 3),
-    ", p =", format(l3$AB$pval, digits = 3),
-    ", significant =", l3$AB$sig, "\n")
-cat("  - B -> A: gamma =", round(l3$BA$gamma, 3),
-    ", SE =", round(l3$BA$se, 3),
-    ", p =", format(l3$BA$pval, digits = 3),
-    ", significant =", l3$BA$sig, "\n")
-cat("  - True tau (A->B):", dat$Tau[2, 1], "\n\n")
+traits <- colnames(dat$Y)
+
+mr_res <- bidirectional_mr(
+  marginal_effects = marginal_df,
+  traits           = traits,
+  Y_residual       = Y_residual,
+  Y                = dat$Y,
+  X_all            = dat$X,
+  ld_matrix        = NULL,
+  alpha1           = l1$threshold,
+  alpha2           = 0.05,
+  F_threshold      = 10,
+  r2_threshold     = 0.1,
+  alpha_mr         = 0.05,
+  n_boot           = 200
+)
+cat("MR Results:\n")
+cat(sprintf(
+  "  A -> B : gamma = %6.4f  SE = %6.4f  p = %s  sig = %s  n_IV = %d\n",
+  mr_res$AB$gamma, mr_res$AB$se,
+  format(mr_res$AB$pval, digits = 3),
+  mr_res$AB$sig, mr_res$AB$n_iv
+))
+cat(sprintf(
+  "  B -> A : gamma = %6.4f  SE = %6.4f  p = %s  sig = %s  n_IV = %d\n",
+  mr_res$BA$gamma, mr_res$BA$se,
+  format(mr_res$BA$pval, digits = 3),
+  mr_res$BA$sig, mr_res$BA$n_iv
+))
+cat("  True tau (A->B):", dat$Tau[2, 1], "\n\n")
+
 
 # =============================================================================
 # Step 5: QTL Classification
 # =============================================================================
 cat("=== Step 5: QTL Classification ===\n\n")
 
-# ---------------------------------------------------------------------------
-# NOTE: 以下调用假设你的 classify() 函数已实现。
-# 分类规则基于 n_cond 和 MR 方向性。
-# ---------------------------------------------------------------------------
+classification_l2 <- vector("list", length(l1$layer2))
 
-# 示例：假设 classify() 已存在
-# cls <- classify(l1 = l1, l2 = l2, l3 = l3)
+for (i in seq_along(l1$layer2)) {
+  snp <- l1$layer2[i]
+  n_marg <- l1$snp_summary$n_marg[l1$snp_summary$snp_id == snp]
+  cond_sub <- cond_eff[cond_eff$locus == snp, ]
+  cond_sig <- setNames(cond_sub$sig_cond, cond_sub$trait)
 
-# 占位：根据真值直接分类（用于演示输出格式）
-classification <- data.frame(
-  SNP            = dat$truth$SNP[l1$candidates],
-  true_class     = dat$truth$class[l1$candidates],
-  predicted_class = dat$truth$class[l1$candidates],  # 占位：假设预测完美
-  n_cond         = l2$n_cond,
-  stringsAsFactors = FALSE
+  cls <- classify_locus(n_marg, cond_sig, mr_res, traits)
+  true_cls <- dat$truth$class[dat$truth$SNP == snp]
+
+  classification_l2[[i]] <- data.frame(
+    SNP = snp,
+    true_class = true_cls,
+    predicted = cls,
+    n_marg = n_marg,
+    n_cond = sum(cond_sig),
+    route = "layer2",
+    stringsAsFactors = FALSE
+  )
+}
+
+classification_l1 <- vector("list", length(l1$class1))
+
+for (i in seq_along(l1$class1)) {
+  snp <- l1$class1[i]
+  cond_sub <- cond_eff[cond_eff$locus == snp, ]
+  cond_sig <- setNames(cond_sub$sig_cond, cond_sub$trait)
+
+  cls <- classify_locus(1L, cond_sig, mr_res, traits)
+  true_cls <- dat$truth$class[dat$truth$SNP == snp]
+
+  classification_l1[[i]] <- data.frame(
+    SNP = snp,
+    true_class = true_cls,
+    predicted = cls,
+    n_marg = 1L,
+    n_cond = sum(cond_sig, na.rm = TRUE),
+    route = "layer1_to_mr",
+    stringsAsFactors = FALSE
+  )
+}
+
+classification <- rbind(
+  do.call(rbind, classification_l2),
+  do.call(rbind, classification_l1)
 )
+
+snp_order <- order(as.integer(gsub("SNP", "", classification$SNP)))
+classification <- classification[snp_order, ]
+rownames(classification) <- NULL
 
 cat("Classification Results:\n")
 print(classification)
-cat("\n")
 
-# 混淆矩阵（真值 vs 预测）
-cat("Confusion Matrix (True vs Predicted):\n")
-if (requireNamespace("stats", quietly = TRUE)) {
-  print(table(True = classification$true_class,
-              Pred = classification$predicted_class))
-}
-cat("\n")
+cat("\nConfusion Matrix (True vs Predicted):\n")
+print(table(True = classification$true_class, Pred = classification$predicted))
+cat("  Note: IV_A rows = Layer 1 false positives, not framework misclassifications.\n")
+
+# Accuracy at three levels
+func_cls <- classification[
+  classification$true_class %in% c("class1", "class2", "class3", "class4", "class5"),
+]
+acc_func <- mean(func_cls$true_class == func_cls$predicted, na.rm = TRUE)
+
+cls_l2 <- do.call(rbind, classification_l2)
+acc_l2 <- mean(cls_l2$true_class == cls_l2$predicted, na.rm = TRUE)
+
+acc_all <- mean(classification$true_class == classification$predicted, na.rm = TRUE)
+
+cat(sprintf("\nFunctional loci accuracy   : %.1f%%\n", acc_func * 100))
+cat(sprintf("Layer 2 accuracy           : %.1f%%\n", acc_l2 * 100))
+cat(sprintf("Overall accuracy           : %.1f%%  (includes Layer 1 FP)\n\n", acc_all * 100))
+
 
 # =============================================================================
-# Step 6: Validation Against Ground Truth
+# Step 6: Validation Summary
 # =============================================================================
-cat("=== Step 6: Validation Against Ground Truth ===\n\n")
+cat("=== Step 6: Validation Summary ===\n\n")
 
-# 逐位点对比
-cat("Locus-by-Locus Validation:\n")
+cat("Layer 1 Performance:\n")
+cat(sprintf("  Power : %.1f%%\n", val_l1$power * 100))
+cat(sprintf("  FDR   : %.1f%%\n", val_l1$fdr * 100))
+
+cat("\nLocus-by-Locus Classification:\n")
 for (i in seq_len(nrow(classification))) {
-  snp   <- classification$SNP[i]
-  true  <- classification$true_class[i]
-  pred  <- classification$predicted_class[i]
-  match <- ifelse(true == pred, "✅ CORRECT", "❌ MISMATCH")
-  cat(sprintf("  %s: true = %-20s pred = %-20s %s\n", snp, true, pred, match))
+  snp <- classification$SNP[i]
+  true <- classification$true_class[i]
+  pred <- classification$predicted[i]
+  route <- classification$route[i]
+  status <- ifelse(true == pred, "CORRECT", "MISMATCH")
+  cat(sprintf(
+    "  %-6s  true = %-12s  pred = %-12s  route = %-14s  [%s]\n",
+    snp, true, pred, route, status
+  ))
 }
 cat("\n")
 
-# 计算准确率
-accuracy <- mean(classification$true_class == classification$predicted_class)
-cat(sprintf("Overall Accuracy: %.1f%%\n\n", accuracy * 100))
 
 # =============================================================================
-# Step 7: Summary & Output Structure
+# Save Results
 # =============================================================================
-cat("=== Step 7: Summary ===\n\n")
+cat("=== Saving Results ===\n\n")
 
-cat("Expected Output Structure from condped():\n\n")
-cat("results/\n")
-cat("├── layer1/\n")
-cat("│   ├── marginal_pvals.rds      # Layer 1 p-values (p x m)\n")
-cat("│   └── candidates.rds          # Candidate locus indices\n")
-cat("├── layer2/\n")
-cat("│   ├── conditional_effects.csv # theta_cond per locus-trait\n")
-cat("│   └── n_cond.csv              # Number of significant conditional traits\n")
-cat("├── layer3/\n")
-cat("│   ├── mr_AB.rds               # MR A->B results (gamma, SE, p)\n")
-cat("│   └── mr_BA.rds               # MR B->A results\n")
-cat("├── classification/\n")
-cat("│   └── qtl_classes.csv         # Final 5-class assignment\n")
-cat("└── figures/\n")
-cat("    ├── figure1_power_fdr.pdf\n")
-cat("    ├── figure2_confusion.pdf\n")
-cat("    └── figure3_tau_distribution.pdf\n\n")
+output_dir <- "/data2/smz/CondPED/inst/results/files"
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-# =============================================================================
-# Full Pipeline Call (for reference)
-# =============================================================================
-cat("================================================================================
-              Full condped() Call (when all functions are ready)
-================================================================================
-
-# One-line analysis after functions are implemented:
-res <- condped(
-  X         = dat$X,
-  Y         = dat$Y,
-  iv_idx    = which(dat$truth$is_IV),
-  alpha1    = 0.05,
-  alpha2    = 0.05 / (ncol(dat$X) * ncol(dat$Y)),
-  alpha_mr  = 0.05
+save(
+  dat, l1, cond_pheno, cond_eff, mr_res, classification, val_l1,
+  file = file.path(output_dir, "condped_example_results.RData")
 )
 
-# Access results:
-# res$layer1$candidates      # Layer 1 significant loci
-# res$layer2$theta_cond      # Conditional effect estimates
-# res$layer3$AB$gamma        # Causal effect A -> B
-# res$classification         # Data frame with predicted classes
+write.csv(classification,
+  file = file.path(output_dir, "classification.csv"),
+  row.names = FALSE
+)
 
-================================================================================
-")
+write.csv(l1$snp_summary,
+  file = file.path(output_dir, "layer1_summary.csv"),
+  row.names = FALSE
+)
 
-cat("Example completed successfully!\n")
-cat("Next step: Replace placeholder sections (Steps 2-5) with actual function calls.\n")
+cat("Results saved to:", output_dir, "\n")
+cat("  - condped_example_results.RData\n")
+cat("  - classification.csv\n")
+cat("  - layer1_summary.csv\n")
+cat("\nExample pipeline completed.\n")

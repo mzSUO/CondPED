@@ -2,7 +2,7 @@
 % Please edit documentation in R/mr.R
 \name{bidirectional_mr}
 \alias{bidirectional_mr}
-\title{双向孟德尔随机化}
+\title{Bidirectional Mendelian Randomization}
 \usage{
 bidirectional_mr(
   marginal_effects,
@@ -20,38 +20,46 @@ bidirectional_mr(
 )
 }
 \arguments{
-\item{marginal_effects}{数据框，来自 \code{qtxnetwork.output.trans()$qtl_data}。}
+\item{marginal_effects}{Data frame with columns: TRAIT, SNPID, A, SE, P_Value.
+Typically built from layer1_marginal_scan()$scan_result.
+P_Value column must use Bonferroni-corrected threshold values
+(pass l1$threshold as alpha1, not raw 0.05).}
 
-\item{cond_effects}{数据框，来自 \code{fit_conditional_model()}。}
+\item{cond_effects}{Data frame from fit_conditional_model() with columns:
+trait, locus, theta_cond, se_cond, pval_cond, sig_cond.}
 
-\item{traits}{长度为 2 的字符向量，性状名称 c("TraitA", "TraitB")。}
+\item{traits}{Character vector of length 2: c("TraitA", "TraitB").}
 
-\item{Y}{n×m 表型矩阵（用于 Bootstrap SE）。\code{NULL} 时使用解析近似。}
+\item{Y}{n x m individual-level phenotype matrix. NULL uses delta method SE.}
 
-\item{X_all}{n×p 全基因型矩阵（将按 IV 列名自动截取）。}
+\item{X_all}{n x p full genotype matrix. Subsetted to IV columns internally.}
 
-\item{ld_matrix}{LD 相关矩阵（可选）。}
+\item{ld_matrix}{Optional LD matrix. NULL skips LD pruning in GLS.}
 
-\item{alpha1}{全基因组显著性阈值。}
+\item{alpha1}{Genome-wide significance threshold for IV relevance.
+Should be l1$threshold (= 0.05 / (p * m)), not raw 0.05.}
 
-\item{alpha2}{排他性检验截断（默认 0.05）。}
+\item{alpha2}{Exclusion compatibility threshold. Default 0.05.}
 
-\item{F_threshold}{弱工具变量过滤阈值（默认 10）。}
+\item{F_threshold}{Weak instrument filter. Default 10.}
 
-\item{r2_threshold}{LD 修剪阈值（默认 0.1）。}
+\item{r2_threshold}{LD pruning threshold. Default 0.1.}
 
-\item{alpha_mr}{MR 显著性判定阈值（默认 0.05）。}
+\item{alpha_mr}{MR significance threshold. Default 0.05.}
 
-\item{n_boot}{Bootstrap 次数（默认 1000）。}
+\item{n_boot}{Bootstrap resamples for SE estimation. Default 1000.}
 }
 \value{
-列表，包含：
-\item{AB}{\code{list(gamma, se, z, pval, sig, n_iv)} 方向 A→B}
-\item{BA}{\code{list(...)}}                            方向 B→A
-\item{iv_AB}{A→B 使用的工具变量 ID 向量}
-\item{iv_BA}{B→A 使用的工具变量 ID 向量}
+Named list:
+\describe{
+\item{AB}{list(gamma, se, z, pval, sig, n_iv, method) for A -> B}
+\item{BA}{list(...) for B -> A}
+\item{iv_AB}{Character vector of SNPIDs used as IVs for A -> B}
+\item{iv_BA}{Character vector of SNPIDs used as IVs for B -> A}
+}
 }
 \description{
-对性状对 (traits\link{1}, traits\link{2}) 执行双向 MR：A→B 和 B→A。
-工具变量按方向独立筛选；每个方向的因果效应独立估计。
+Runs MR in both directions (A->B and B->A) for a pair of traits.
+IVs are selected independently for each direction using select_instruments().
+Causal effects are estimated independently using estimate_causal_gls().
 }

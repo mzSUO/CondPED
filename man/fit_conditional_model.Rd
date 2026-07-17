@@ -4,7 +4,14 @@
 \alias{fit_conditional_model}
 \title{估计候选位点的条件遗传效应}
 \usage{
-fit_conditional_model(Y_cond, X_loci, alpha2 = NULL)
+fit_conditional_model(
+  Y_cond,
+  X_loci,
+  alpha2 = NULL,
+  method = c("OLS", "LMM"),
+  env = NULL,
+  epi_pairs = NULL
+)
 }
 \arguments{
 \item{Y_cond}{n × m 条件表型矩阵（由 \code{compute_conditional_phenotype} 返回的 \code{$Y_cond}）。}

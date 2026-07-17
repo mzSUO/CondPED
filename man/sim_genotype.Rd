@@ -6,15 +6,6 @@
 \usage{
 sim_genotype(n, p, maf = 0.3, population = c("RIL", "F2"), seed = NULL)
 }
-\arguments{
-\item{n}{样本量}
-
-\item{p}{SNP 数}
-
-\item{maf}{次等位基因频率}
-
-\item{population}{"RIL"(-1/1) 或 "F2"(-1/0/1)}
-}
 \description{
 模拟基因型矩阵
 }

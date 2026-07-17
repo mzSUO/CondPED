@@ -2,7 +2,7 @@
 % Please edit documentation in R/mr.R
 \name{select_instruments}
 \alias{select_instruments}
-\title{筛选 MR 有效工具变量（论文 Section 2.3.1a 四准则）}
+\title{Select valid instrumental variables for MR}
 \usage{
 select_instruments(
   marginal_effects,
@@ -17,41 +17,44 @@ select_instruments(
 )
 }
 \arguments{
-\item{marginal_effects}{数据框，来自 \code{qtxnetwork.output.trans()$qtl_data}。
-必须含列：\code{TRAIT, QTL, A, SE, P_Value}。}
+\item{marginal_effects}{Data frame from layer1_marginal_scan()$scan_result,
+reformatted with columns: TRAIT, SNPID, A (numeric), SE (numeric),
+P_Value (numeric).}
 
-\item{cond_effects}{数据框，来自 \code{fit_conditional_model()}。
-必须含列：\code{trait, locus, pval_cond}。}
+\item{cond_effects}{Data frame from fit_conditional_model() with columns:
+trait, locus, theta_cond, se_cond, pval_cond, sig_cond.}
 
-\item{exposure}{暴露性状名称（字符串）。}
+\item{exposure}{Character. Exposure trait name.}
 
-\item{outcome}{结果性状名称（字符串）。}
+\item{outcome}{Character. Outcome trait name.}
 
-\item{alpha1}{全基因组显著性阈值（由 QTLNetwork 置换检验确定）。}
+\item{alpha1}{Genome-wide significance threshold (Bonferroni-corrected).
+Use l1$threshold from layer1_marginal_scan(), not raw 0.05.}
 
-\item{alpha2}{排他性检验 p 值截断（默认 0.05）。
-位点对结果性状的条件效应 p > alpha2 → 与排他性约束相容。}
+\item{alpha2}{Exclusion compatibility p-value cutoff. Default 0.05.}
 
-\item{F_threshold}{弱工具变量过滤 F 统计量阈值（默认 10）。}
+\item{F_threshold}{Weak instrument filter threshold. Default 10.}
 
-\item{r2_threshold}{LD 修剪阈值（|r|，默认 0.1）。}
+\item{r2_threshold}{LD pruning threshold (|r|, not r^2). Default 0.1.}
 
-\item{ld_matrix}{位点间 LD 相关矩阵（|r| 值，非 r²）。
-\code{NULL} 时跳过 LD 修剪。}
+\item{ld_matrix}{Optional k x k matrix of pairwise |r| values.
+NULL skips LD pruning.}
 }
 \value{
-有效工具变量的位点 ID 字符向量。若不足 3 个，返回空向量并给出警告。
+Character vector of valid IV SNP IDs. Returns empty vector with a
+warning if fewer than 3 valid IVs are found.
 }
 \description{
-筛选 MR 有效工具变量（论文 Section 2.3.1a 四准则）
+Applies four criteria to identify valid IVs for a given causal direction:
+\enumerate{
+\item Relevance     : marginal p-value for exposure < alpha1
+\item Exclusion     : conditional p-value for outcome > alpha2
+(empirical compatibility with exclusion restriction)
+\item Instrument    : F-statistic = (A/SE)^2 > F_threshold
+\item Independence  : pairwise |r| < r2_threshold (LD pruning)
+}
 }
 \details{
-四准则：
-\enumerate{
-\item 相关性：位点对暴露性状边际显著（\code{P_Value < alpha1}）
-\item 排他性相容：位点对结果性状的条件效应不显著（\code{pval_cond > alpha2}）
-\item 弱工具变量过滤：F 统计量 = (A/SE)² > F_threshold
-\item LD 修剪：位点间 |r| < r2_threshold（当提供 ld_matrix 时）
-}
-注意：准则 2 是"排他性兼容"（empirical support），不是正式证明排他性成立。
+Note: criterion 2 provides empirical support for the exclusion restriction,
+not a formal proof. Non-significance does not rule out horizontal pleiotropy.
 }
