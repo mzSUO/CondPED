@@ -2,95 +2,79 @@
 % Please edit documentation in R/condped.R
 \name{condped}
 \alias{condped}
-\title{condped
-CondPED 完整分析流程}
+\title{End-to-end CondPED analysis}
 \usage{
 condped(
-  geno,
-  pheno,
-  qtxnetwork_path = NULL,
-  covariates = NULL,
-  alpha1 = 0.05,
-  alpha2 = NULL,
-  scan_2d = FALSE,
-  ld_matrix = NULL,
-  traits = NULL,
-  population = c("RIL", "F2"),
-  output_dir = "./condped_output",
-  n_boot = 1000,
-  verbose = TRUE
+  Y,
+  W = NULL,
+  G,
+  K = NULL,
+  chromosome = NULL,
+  alpha_omnibus = 0.05,
+  omnibus_adjust = "BH",
+  attribution_mode = "bb_fdr",
+  q_target = 0.05,
+  conditional_adjust = "holm",
+  pve_correction = "both",
+  crossfit = FALSE,
+  bootstrap = FALSE,
+  control = list(),
+  seed = 1L
 )
 }
 \arguments{
-\item{geno}{基因型矩阵或数据框，n × p。
-RIL: 编码为 -1/1；F2: 编码为 -1/0/1。
-行名 = 个体ID，列名 = SNP ID。}
+\item{Y}{Numeric \verb{n x m} phenotype matrix (rows are individuals).}
 
-\item{pheno}{表型数据框，n × m。纯数值，列名 = 性状名。
-若第一列为字符型ID，会自动识别并排除。}
+\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when \code{NULL}
+an intercept-only design is used.}
 
-\item{qtxnetwork_path}{QTXNetwork 可执行文件绝对路径。Layer 1 必需。}
+\item{G}{Numeric \verb{n x p} genotype dosage matrix coded 0/1/2.}
 
-\item{covariates}{协变量数据框，n × c。可选。若提供，会先对表型回归去残差。}
+\item{K}{Optional numeric \verb{n x n} genomic relationship matrix; when
+\code{NULL} it is built from \code{G}.}
 
-\item{alpha1}{Layer 1 显著性阈值。默认 0.05。
-也用作 MR 工具变量筛选的边际显著性截断。}
+\item{chromosome}{Optional vector of chromosome labels per marker, used
+for leave-one-chromosome-out scans. The global conditional projection
+coefficients are never redefined by these scans.}
 
-\item{alpha2}{Layer 2 Bonferroni 校正阈值。默认 NULL（自动计算 = 0.05/(k×m)）。}
+\item{alpha_omnibus}{First-layer omnibus significance level.}
 
-\item{scan_2d}{是否进行 2D 上位性扫描。默认 FALSE。}
+\item{omnibus_adjust}{Adjustment method for the omnibus p-values.}
 
-\item{ld_matrix}{位点间 LD 相关矩阵（|r| 值），p × p。可选，用于 MR 的 LD 修剪。
-行名/列名须与 geno 的列名一致。}
+\item{attribution_mode}{Second-layer correction mode passed to
+\code{\link[=attribute_traits]{attribute_traits()}}.}
 
-\item{traits}{性状名称向量，长度 = ncol(pheno)。默认取 pheno 列名。}
+\item{q_target}{Target FDR level for the attribution step.}
 
-\item{population}{群体类型："RIL"（默认，纯合系，无显性）或 "F2"。}
+\item{conditional_adjust}{Adjustment method for the conditional tests.}
 
-\item{output_dir}{结果输出目录。默认 "./condped_output"。}
+\item{pve_correction}{PVE bias correction passed to
+\code{\link[=estimate_locus_pve]{estimate_locus_pve()}}.}
 
-\item{n_boot}{Bootstrap 次数，用于 MR 标准误估计。默认 1000。}
+\item{crossfit}{Logical; run \code{\link[=crossfit_effect_pve]{crossfit_effect_pve()}}.}
 
-\item{verbose}{是否打印进度。默认 TRUE。}
+\item{bootstrap}{Logical; run \code{\link[=bootstrap_condped]{bootstrap_condped()}}.}
+
+\item{control}{List of additional control settings passed to sub-modules.}
+
+\item{seed}{Random seed.}
 }
 \value{
-列表（invisible），包含：
-\describe{
-\item{layer1}{Layer 1 筛选结果：class1, layer2, snp_count, full_table}
-\item{layer2}{条件投影结果：Y_cond, gamma, V, schur, diagnostics}
-\item{cond_effects}{条件效应估计数据框：trait, locus, theta_cond, se_cond, pval_cond, sig_cond}
-\item{layer3}{双向 MR 结果：AB, BA, iv_AB, iv_BA}
-\item{classification}{最终分类数据框：snp_id, class, n_marg_sig, 条件效应, MR 结果}
-\item{params}{分析参数记录}
-}
-同时写入 output_dir：
-\itemize{
-\item condped_result.rds（完整结果）
-\item classification.csv（分类表格）
-}
+An object of class \code{"condped_fit"}: a list with components
+\code{null_global}, \code{null_loco}, \code{omnibus}, \code{effects}, \code{attribution},
+\code{conditional}, \code{pve}, \code{crossfit}, \code{bootstrap}, \code{output_long},
+\code{settings}, \code{status} and \code{diagnostics}, as specified in the interface
+contract.
 }
 \description{
-执行三层分析框架：
-Layer 1: 边际多性状 GWAS 筛选（调用 QTXNetwork）
-Layer 2: 条件投影分析（条件表型 + 条件效应估计）
-Layer 3: 双向孟德尔随机化因果推断
-Classify: 六类多效性分类决策
+Runs the full CondPED pipeline: input checks, construction or reading of
+the genomic relationship matrix, global multi-trait null model, omnibus
+scan, effect estimation, trait attribution, conditional-deviation
+decomposition, PVE estimation, and optional cross-fitting and bootstrap.
 }
-\examples{
-\dontrun{
-# 1. 模拟数据（已在 Linux 生成或 R 内模拟）
-sim <- generate_condped("class4", n = 200, p = 100, pve_A = 0.02, tau = 0.3)
+\section{Status}{
 
-# 2. 直接调用（最简单）
-res <- condped(
-  geno = sim$X,
-  pheno = as.data.frame(sim$Y),
-  qtxnetwork_path = "/data2/smz/QTXNetwork_4.0_MT/build/QTXNetwork",
-  traits = c("TraitA", "TraitB"),
-  output_dir = "./output"
-)
+S0 skeleton: this function is an API stub and currently throws an error of
+class \code{condped_not_implemented}.
+}
 
-# 3. 查看分类结果
-print(res$classification)
-}
-}

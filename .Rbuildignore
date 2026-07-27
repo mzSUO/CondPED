@@ -5,3 +5,5 @@
 ^data-raw$
 ^CondPED-paper$
 ^LICENSE\.md$
+^docs$
+^state\.md$

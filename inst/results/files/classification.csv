@@ -1,8 +1,0 @@
-"SNP","true_class","predicted","n_marg","n_cond","route"
-"SNP1","class1","class1",1,2,"layer1_to_mr"
-"SNP2","class1","class1",1,2,"layer1_to_mr"
-"SNP3","class3","class3",1,1,"layer1_to_mr"
-"SNP4","class3","class3",1,1,"layer1_to_mr"
-"SNP5","class4","class4",2,1,"layer2"
-"SNP6","class4","class4",2,2,"layer2"
-"SNP10","IV_A","class3",1,1,"layer1_to_mr"
