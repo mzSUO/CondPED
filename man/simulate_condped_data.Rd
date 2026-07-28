@@ -30,14 +30,15 @@ simulate_condped_data(
 \item{n}{Positive integer; number of individuals. Main simulations use
 500, 750, 1000 or 1250.}
 
-\item{m}{Integer; number of traits (default 4).}
+\item{m}{Integer (>= 2); number of traits (default 4).}
 
 \item{p}{Integer; total number of background markers.}
 
 \item{maf_range}{Numeric vector of length 2 giving the range of minor
 allele frequencies.}
 
-\item{h2}{Numeric vector of length \code{m}; target SNP heritabilities.}
+\item{h2}{Numeric vector of length \code{m} (or a recycled scalar); target
+SNP heritabilities. Total phenotypic variance per trait is 1.}
 
 \item{R_G}{Optional \verb{m x m} genetic correlation matrix; \code{NULL} uses an
 exchangeable correlation of 0.4.}
@@ -50,26 +51,32 @@ exchangeable correlation of 0.4.}
 \code{"dense"}, \code{"covariance_aligned"}, \code{"conditional_deviation"},
 \code{"projection_induced"}.}
 
-\item{locus_pve}{Scalar or per-active-trait vector of target locus PVE.}
+\item{locus_pve}{Scalar or per-active-trait vector of target locus PVE.
+A single scaling factor per locus preserves the effect-template
+ratios, so the target is matched on average over the active traits
+(a vector is summarised by its mean).}
 
 \item{delta}{True deviation effect in the conditional-deviation
-architecture.}
+architecture; after scaling, the target-trait conditional effect is
+exactly \code{s_l * delta}.}
 
 \item{target_trait}{Integer index of the target trait.}
 
 \item{n_groups}{Number of families/subpopulations used when
 \code{structured = TRUE}.}
 
-\item{fst}{Mild between-group allele frequency differentiation.}
+\item{fst}{Mild between-group allele frequency differentiation
+(Balding-Nichols parameter, must be > 0 when \code{structured = TRUE}).}
 
 \item{structured}{Logical; when \code{TRUE} individuals carry family/subgroup
 structure so that the genomic relationship matrix does not degenerate
 to the identity.}
 
-\item{n_qtl}{Integer; number of focal QTL.}
+\item{n_qtl}{Integer; number of focal QTL (sampled without replacement).}
 
-\item{max_attempts}{Maximum number of regeneration attempts when the
-background genetic covariance is not positive semi-definite.}
+\item{max_attempts}{Maximum number of re-draws when the background
+genetic covariance is not positive semi-definite, before falling back
+to a recorded scaling of the focal effects.}
 
 \item{seed}{Optional random seed.}
 
@@ -77,20 +84,62 @@ background genetic covariance is not positive semi-definite.}
 residual values.}
 }
 \value{
-A list with components \code{Y}, \code{W}, \code{G}, \code{K_bg}, \code{qtl_index},
-\code{truth} (effect matrices, true associated-trait sets \code{A}, true
-deviation sets \code{D}, \code{eta}, PVE matrices and all covariance ground
-truth), \code{latent}, \code{generator}, \code{status} and \code{diagnostics}, as specified
-in the interface contract.
+A list with components:
+\describe{
+\item{Y}{\verb{n x m} phenotype matrix.}
+\item{W}{\verb{n x 1} intercept design matrix.}
+\item{G}{\verb{n x p} genotype dosage matrix (0/1/2).}
+\item{K_bg}{\verb{n x n} background genomic relationship matrix,
+\code{mean(diag(K_bg)) = 1}.}
+\item{qtl_index}{Integer vector of focal QTL positions in \code{G}.}
+\item{truth}{List with \code{B_Q} and \code{beta} (\verb{n_qtl x m} effect
+matrices), \code{A} (per-locus associated-trait sets), \code{D} (per-locus
+conditional-deviation sets, subsets of \code{A}), \code{eta} (true
+conditional effects), \code{locus_pve}, \code{conditional_pve},
+\code{Sigma_Q}, \code{Sigma_G_bg}, \code{Sigma_G_total}, \code{Sigma_E},
+\code{Sigma_P_total}, \code{gamma} (\verb{m x (m-1)}, row \code{i} is
+\eqn{\gamma_{i,-i}}) and \code{C} (\verb{m x m}, column \code{i} is the contrast
+vector \eqn{c_i}).}
+\item{latent}{\code{list(U, E)} when \code{return_latent = TRUE}, else
+\code{NULL}.}
+\item{generator}{List with \code{seed}, \code{attempts}, \code{scaled},
+\code{scale_factor} and \code{settings}.}
+\item{status}{Standard CondPED status list.}
+\item{diagnostics}{List with \code{mean_diag_K}, \code{K_eigen_sd}, \code{K_rank}
+and \code{min_eigen_Sigma_G_bg}.}
+}
 }
 \description{
 Generates simulated data with a known multi-trait effect matrix, true
 associated-trait sets, true conditional-deviation sets, theoretical PVE
-and complete covariance ground truth.
+and complete covariance ground truth, following the interface contract
+(section 4.1) and the Methods Simulation Study (sections 5.2-5.4).
 }
-\section{Status}{
+\details{
+Markers are generated independently (no LD blocks). With
+\code{structured = TRUE}, individuals belong to \code{n_groups} families or
+subpopulations whose allele frequencies are mildly differentiated
+(Balding-Nichols model with parameter \code{fst}), so that the genomic
+relationship matrix keeps an identifiable eigenvalue dispersion instead
+of degenerating to the identity. The background relationship matrix is
+built from the standardised background genotypes and scaled to
+\code{mean(diag(K_bg)) = 1}. The polygenic background is drawn through the
+eigen decomposition of \code{K_bg}.
 
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+The focal QTL covariance
+\eqn{\Sigma_Q = \sum_l v_l \beta_l \beta_l^\top} (with
+\eqn{v_l = 2 p_l (1 - p_l)}) is subtracted from the target total genetic
+covariance, \eqn{\Sigma_{G,bg} = \Sigma_{G,total} - \Sigma_Q}. If
+\eqn{\Sigma_{G,bg}} is not positive semi-definite, the focal loci and
+their effects are re-drawn (up to \code{max_attempts} times); as a last
+resort the focal effects are shrunk by a recorded scalar factor so that
+PSD holds, and every component of \code{truth} is updated accordingly.
+
+True conditional projection coefficients are computed from the total
+phenotypic covariance \eqn{\Sigma_{P,total} = \Sigma_{G,total} +
+\Sigma_E} once, and the true conditional effects satisfy
+\eqn{\eta_{il} = c_i^\top \beta_l}. In the \code{covariance_aligned}
+architecture the target-trait \eqn{\eta} is exactly zero by
+construction; in \code{projection_induced} the target-trait \eqn{\beta = 0}
+while \eqn{\eta \neq 0} under correlated traits.
 }
-

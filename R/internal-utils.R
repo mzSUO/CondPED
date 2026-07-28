@@ -221,6 +221,21 @@
   )
 }
 
+#' Genomic relationship matrix from standardised genotypes
+#'
+#' Computes `K = Z Z' / p` from a standardised genotype matrix `Z`
+#' (columns centred and scaled) and rescales it to average diagonal 1.
+#'
+#' @param Z `n x p` standardised genotype matrix.
+#' @return Symmetric `n x n` relationship matrix with `mean(diag(K)) = 1`.
+#' @keywords internal
+.make_grm <- function(Z) {
+  Z <- as.matrix(Z)
+  K <- tcrossprod(Z) / ncol(Z)
+  K <- (K + t(K)) / 2
+  K / mean(diag(K))
+}
+
 #' Signal that a public function is not implemented yet
 #'
 #' Used by the S0 API skeleton: every public stub throws an error of class

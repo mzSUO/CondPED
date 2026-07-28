@@ -233,8 +233,11 @@ test_that("every public function's formals match the interface contract", {
 })
 
 test_that("every stub throws condped_not_implemented", {
+  # Functions that have graduated from the S0 skeleton to a real
+  # implementation no longer throw the stub error.
+  implemented <- c("simulate_condped_data")
   ns <- asNamespace("CondPED")
-  for (fn_name in names(api_formals)) {
+  for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)
     expect_error(
       do.call(fn, list()),
