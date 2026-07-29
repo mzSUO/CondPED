@@ -32,6 +32,23 @@
   list(ok = ok, code = code, message = message, warnings = warnings)
 }
 
+#' Stop with a contracted invalid-input error
+#'
+#' All user-input validation failures raise an error of class
+#' `condped_invalid_input` (contract section 1.3), so callers can
+#' distinguish bad input from internal numerical failures.
+#'
+#' @param ... Passed to [sprintf()] to build the message.
+#' @keywords internal
+.stop_invalid_input <- function(...) {
+  stop(
+    structure(
+      class = c("condped_invalid_input", "error", "condition"),
+      list(message = sprintf(...), call = NULL)
+    )
+  )
+}
+
 #' Validate dimensions of core data matrices
 #'
 #' Checks that the core data objects are numeric matrices with consistent
@@ -53,10 +70,14 @@
     x <- mats[[nm]]
     if (is.null(x)) next
     if (!is.matrix(x) || !is.numeric(x)) {
-      stop(sprintf("%s must be a numeric matrix.", nm), call. = FALSE)
+      .stop_invalid_input("%s must be a numeric matrix.", nm)
     }
     if (anyNA(x)) {
-      stop(sprintf("%s must not contain missing values.", nm), call. = FALSE)
+      .stop_invalid_input("%s must not contain missing values.", nm)
+    }
+    if (any(!is.finite(x))) {
+      .stop_invalid_input("%s must not contain non-finite values (NA/Inf/NaN).",
+                          nm)
     }
   }
   n_candidates <- c(
@@ -66,11 +87,12 @@
     if (!is.null(K)) nrow(K)
   )
   if (length(n_candidates) > 0L && length(unique(n_candidates)) > 1L) {
-    stop("Y, W, G and K must share the same number of rows (individuals).",
-         call. = FALSE)
+    .stop_invalid_input(
+      "Y, W, G and K must share the same number of rows (individuals)."
+    )
   }
   if (!is.null(K) && nrow(K) != ncol(K)) {
-    stop("K must be a square n x n matrix.", call. = FALSE)
+    .stop_invalid_input("K must be a square n x n matrix.")
   }
   invisible(list(
     n = if (length(n_candidates) > 0L) n_candidates[[1L]] else NULL,

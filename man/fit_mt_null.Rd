@@ -25,8 +25,8 @@ fit_mt_null(
 \arguments{
 \item{Y}{Numeric \verb{n x m} phenotype matrix (rows are individuals).}
 
-\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when \code{NULL}
-an intercept-only design is used.}
+\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when
+\code{NULL} an intercept-only design is used.}
 
 \item{K}{Numeric \verb{n x n} genomic relationship matrix, scaled to average
 diagonal 1.}
@@ -35,51 +35,103 @@ diagonal 1.}
 not already present.}
 
 \item{optimizer}{Optimizer used for the restricted log-likelihood;
-\code{"BFGS"} or \code{"nlminb"}.}
+\code{"BFGS"} (via \code{\link[stats:optim]{stats::optim()}}) or \code{"nlminb"} (via
+\code{\link[stats:nlminb]{stats::nlminb()}}).}
 
-\item{n_starts}{Integer; number of random starting points.}
+\item{n_starts}{Integer; number of starting points (the first is the
+deterministic \code{h2_start} split, the rest are random re-splits; the
+random draws follow the current RNG stream, so \code{set.seed()} before the
+call gives full reproducibility).}
 
 \item{h2_start}{Numeric in (0, 1); heritability used to split the sample
 phenotypic covariance into starting values.}
 
-\item{start_values}{Optional explicit starting values (log-Cholesky
-parameterisation).}
+\item{start_values}{Optional explicit first start: either a numeric
+log-Cholesky parameter vector of length \code{m * (m + 1)} (first
+\code{m * (m + 1) / 2} for \code{Sigma_G}, then the same for \code{Sigma_E}), or a
+list with components \code{Sigma_G} and \code{Sigma_E}.}
 
-\item{eig_tol}{Tolerance for the eigen decomposition of \code{K}.}
+\item{eig_tol}{Tolerance used when flooring the eigenvalues of \code{K} and
+computing its numerical rank.}
 
 \item{inverse_tol}{Relative tolerance forwarded to \code{.safe_inverse()}.}
 
-\item{chol_floor}{Lower bound for log-Cholesky diagonal parameters.}
+\item{chol_floor}{Lower bound for the log-Cholesky diagonal (standard
+deviation scale).}
 
-\item{control}{List of optimizer control settings (e.g. \code{maxit},
-\code{reltol}).}
+\item{control}{List of optimizer control settings; \code{maxit} (default 500)
+and \code{reltol} (default 1e-8) are honoured.}
 
 \item{compute_gamma}{Logical; compute the global conditional projection
 coefficients from \eqn{\widehat\Sigma_P = \widehat\Sigma_G +
-\widehat\Sigma_E}.}
+\widehat\Sigma_E} (computed once, fixed for the whole pipeline).}
 
 \item{return_rotation}{Logical; return the rotation object (eigenvectors,
-eigenvalues, rotated data and related components).}
+eigenvalues, rotated data, per-coordinate inverse covariances and the
+GLS components).}
 
-\item{verbose}{Logical; print optimisation progress.}
+\item{verbose}{Logical; print per-start optimisation progress.}
 }
 \value{
 An object of class \code{"condped_mt_null"}: a list with components
-\code{Sigma_G}, \code{Sigma_E}, \code{Sigma_P}, \code{fixed_effects}, \code{gamma}, \code{contrasts},
-\code{conditional_variance}, \code{logLik}, \code{npar}, \code{optimizer}, \code{convergence},
-\code{rotation}, \code{diagnostics} and \code{status}, as specified in the interface
-contract.
+\describe{
+\item{Sigma_G, Sigma_E, Sigma_P}{Estimated \verb{m x m} covariance
+matrices (\code{Sigma_P = Sigma_G + Sigma_E}).}
+\item{fixed_effects}{\verb{q x m} matrix of GLS fixed-effect estimates.}
+\item{gamma}{\verb{m x (m - 1)} matrix of projection coefficients
+(row \code{i} is \eqn{\gamma_{i,-i}}); \code{NULL} when
+\code{compute_gamma = FALSE}.}
+\item{contrasts}{\verb{m x m} matrix whose column \code{i} is the contrast
+vector \eqn{c_i}.}
+\item{conditional_variance}{Length \code{m} vector of Schur complements.}
+\item{logLik}{Maximised restricted log-likelihood.}
+\item{npar}{Number of variance parameters, \code{m * (m + 1)}.}
+\item{optimizer}{Optimizer actually used.}
+\item{convergence}{List with \code{code}, \code{message}, \code{gradient_norm},
+\code{iterations}, \code{selected_start} and \code{starts} (a data frame recording
+the objective value, convergence code, legality and selection flag
+of every starting point).}
+\item{rotation}{List with \code{U}, \code{lambda}, \code{Y_tilde}, \code{W_tilde},
+\code{Vinv} (an \verb{m x m x n} array of per-coordinate inverse
+covariances), \code{logdet_Vj}, \code{XtVinvX}, \code{XtVinvX_inv},
+\code{beta_fixed} (vectorised fixed effects) and \code{residual_tilde};
+\code{NULL} when \code{return_rotation = FALSE}.}
+\item{diagnostics}{List with \code{K_rank}, \code{K_condition}, \code{K_eigen_sd},
+\code{min_eigen_Sigma_G}, \code{min_eigen_Sigma_E}, \code{condition_Sigma_P} and
+\code{identifiable_warning}.}
+\item{status}{Standard CondPED status list.}
+}
 }
 \description{
-Fits the multi-trait null model
-\eqn{y = X_0 b + u + \varepsilon} with covariance
-\eqn{V = \Sigma_G \otimes K + \Sigma_E \otimes I_n} by restricted maximum
-likelihood, and returns the rotation objects and global conditional
-contrasts reused by the whole pipeline.
+Fits the multi-trait null model \eqn{y = X_0 b + u + \varepsilon} with
+covariance \eqn{V = \Sigma_G \otimes K + \Sigma_E \otimes I_n} by
+restricted maximum likelihood, following the interface contract
+(section 4.2) and Methods equations (2)-(6). Returns the rotation
+objects and the global conditional contrasts reused by the whole
+pipeline.
 }
-\section{Status}{
+\details{
+The genomic relationship matrix is eigen-decomposed exactly once,
+\eqn{K = U \Lambda U^\top}, and the data are rotated:
+\eqn{\widetilde Y = U^\top Y}, \eqn{\widetilde W = U^\top W}. In the
+rotated space every coordinate \eqn{j} has the \eqn{m \times m}
+covariance \eqn{V_j = \lambda_j \Sigma_G + \Sigma_E}, so the full
+\eqn{nm \times nm} matrices \eqn{V} and \eqn{P} are never constructed.
+Both covariance matrices use the log-Cholesky parameterisation
+\eqn{\Sigma = L L^\top} with \eqn{L_{ii} = \exp(\theta_{ii})} (floored
+at \code{chol_floor}), which keeps them positive definite throughout the
+optimisation. The restricted log-likelihood includes the fixed-effect
+correction term \eqn{\log|X_0^\top V^{-1} X_0|} (contract section 2.3),
+and the optimiser receives an analytic gradient of the rotated
+objective.
 
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+Starting values split the sample phenotypic covariance by \code{h2_start}
+(projected to the positive-definite space); additional starts randomly
+re-split it. The solution with the largest restricted log-likelihood
+among the converged, legally estimated runs is retained.
+
+When \code{K} is (numerically) the identity or its eigenvalue dispersion is
+very low, the two variance components are only weakly identifiable;
+this is reported through \code{diagnostics$identifiable_warning} and a status
+warning instead of being silently ignored (contract section 2.1).
 }
-
