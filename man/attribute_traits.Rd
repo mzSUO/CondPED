@@ -18,47 +18,96 @@ attribute_traits(
 )
 }
 \arguments{
-\item{omnibus}{Omnibus scan result returned by \code{\link[=scan_mt_omnibus]{scan_mt_omnibus()}}.}
+\item{omnibus}{Omnibus scan result returned by \code{\link[=scan_mt_omnibus]{scan_mt_omnibus()}}, or
+its \code{omnibus} data.frame (columns \code{marker_id}, \code{p_value}, ...).}
 
-\item{effects}{Effect estimates returned by \code{\link[=estimate_mt_effects]{estimate_mt_effects()}}.}
+\item{effects}{Effect estimates returned by \code{\link[=estimate_mt_effects]{estimate_mt_effects()}}, or
+its \code{effects_long} data.frame (columns \code{marker_id}, \code{trait}, \code{beta},
+\code{se}, \code{p_value}).}
 
 \item{omnibus_method}{Multiple-testing adjustment for the first-layer
 omnibus p-values: \code{"BH"}, \code{"bonferroni"} or \code{"none"}.}
 
-\item{alpha_omnibus}{First-layer omnibus significance level.}
+\item{alpha_omnibus}{First-layer omnibus significance level (modes
+\code{"bb_fdr"} and \code{"none"}).}
 
 \item{attribution_mode}{Second-layer correction mode: \code{"bb_fdr"}
-(Benjamini-Bogomolov style FDR on the selected family), \code{"holm_fwer"}
-(split error budget with Holm on all subsequent hypotheses) or \code{"none"}.}
+(Benjamini-Bogomolov style FDR on the selected families), \code{"holm_fwer"}
+(split error budget with Holm on all subsequent hypotheses) or
+\code{"none"}.}
 
-\item{q_target}{Target FDR level for \code{"bb_fdr"}.}
+\item{q_target}{Target FDR level for \code{"bb_fdr"}; in \code{"none"} mode the
+nominal unadjusted per-trait threshold.}
 
 \item{alpha_total}{Total error budget for \code{"holm_fwer"}.}
 
 \item{alpha_split}{Numeric vector of length 2 giving the split of
-\code{alpha_total} between the first and subsequent layers.}
+\code{alpha_total} between the first and subsequent layers; must sum to
+\code{alpha_total}.}
 
 \item{dependence}{Dependence assumption for the BB step: \code{"assumed"} or
-\code{"empirical"}.}
+\code{"empirical"} (see Details; no empirical calibration is performed).}
 
-\item{return_all}{Logical; return the full per-trait table, including
-non-attributed rows.}
+\item{return_all}{Logical; return the full per-trait table for the
+selected loci, including non-attributed rows. \code{FALSE} keeps only the
+attributed rows and never changes \code{A}.}
 }
 \value{
-A list with components \code{selected_loci}, \code{trait_table} (a
-data.frame with columns \code{marker_id}, \code{trait}, \code{beta}, \code{se}, \code{p_raw},
-\code{p_adjusted}, \code{attributed}), \code{A} (per-locus associated-trait sets),
-\code{mode}, \code{assumptions}, \code{status} and \code{diagnostics}, as specified in the
-interface contract.
+A list with components
+\describe{
+\item{selected_loci}{Character vector of first-layer selected marker
+ids.}
+\item{trait_table}{\code{data.frame} with columns \code{marker_id}, \code{trait},
+\code{beta}, \code{se}, \code{p_raw}, \code{p_adjusted}, \code{attributed}.}
+\item{A}{Named list; per-locus associated-trait sets
+\eqn{\widehat{\mathcal A}_l} (Methods eq. 18), exactly the rows of
+\code{trait_table} with \code{attributed == TRUE} split by \code{marker_id}. Loci
+with no attributed trait are absent (omnibus-only/unresolved).}
+\item{mode}{The \code{attribution_mode} used.}
+\item{assumptions}{Character vector recording the selection rule, the
+dependence/selection assumptions of the BB procedure and the
+threshold rule of \code{"none"} mode.}
+\item{status}{Standard status list (\code{ok}, \code{code}, \code{message},
+\code{warnings}).}
+\item{diagnostics}{List with \code{M}, \code{n_selected}, \code{q_within},
+\code{n_attributed} and additional counts (\code{n_na_omnibus_p},
+\code{n_missing_effect_loci}, \code{n_na_effect_p}, layer levels).}
+}
 }
 \description{
 Attributes the omnibus-selected loci to individual traits, with
 hierarchical multiplicity correction (Benjamini-Bogomolov style FDR or
 Holm FWER) layered on top of the first-layer omnibus selection.
 }
-\section{Status}{
+\details{
+The first layer selects loci from the omnibus scan: the \code{M} valid
+(non-\code{NA}) omnibus p-values are adjusted with \code{omnibus_method} and
+compared against the first-layer level (\code{alpha_omnibus}, or
+\code{alpha_split[1]} in \code{"holm_fwer"} mode). \code{M} counts tested locus
+families only -- neither all rows of the omnibus table nor the number
+of selected loci.
 
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+The second layer attributes traits within the selected set \code{S}:
+\describe{
+\item{\code{bb_fdr}}{Benjamini-Bogomolov style: within each selected locus
+family, BH is applied to that family's per-trait p-values at level
+\verb{q_within = q_target * |S| / M} (Methods eq. 30). The per-trait
+hypotheses of different loci are never pooled into a single BH.}
+\item{\code{holm_fwer}}{the error budget \code{alpha_total} is split according
+to \code{alpha_split}; all locus x trait hypotheses actually tested in
+the second layer are pooled and adjusted with Holm at level
+\code{alpha_split[2]}. For the confirmatory FWER mode of Methods
+section 3.7.2, use \code{omnibus_method = "bonferroni"} so that the
+first layer spends \code{alpha_split[1]} as \code{alpha_1 / M}.}
+\item{\code{none}}{MT-Posthoc baseline: per-trait p-values are reported
+unchanged and \code{attributed} is decided by the explicit unadjusted
+rule \code{p_raw <= q_target}.}
 }
 
+\code{dependence = "empirical"} is accepted for interface compatibility, but
+the interface contract specifies no permutation/bootstrap calibration
+algorithm, so none is performed: the procedure is identical to
+\code{"assumed"} and a warning plus an \code{assumptions} entry record that the
+error-rate labels are unverified under the empirical dependence
+structure.
+}
