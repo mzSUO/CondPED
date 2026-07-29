@@ -49,8 +49,9 @@ inverse of \eqn{J_l}.}
 \value{
 A list with components \code{omnibus} (a data.frame with columns
 \code{marker_id}, \code{maf}, \code{n_eff}, \code{Q}, \code{df}, \code{p_value}, \code{rank_J},
-\code{condition_J}, \code{status}), optional \code{score} and \code{effects}, plus \code{status}
-and \code{diagnostics}, as specified in the interface contract.
+\code{condition_J}, \code{status}, plus \code{filter_reason} for filtered markers),
+optional \code{score} and \code{effects}, plus \code{status} and \code{diagnostics}, as
+specified in the interface contract.
 }
 \description{
 Runs the joint multi-trait score test for every marker, strictly following
@@ -59,9 +60,3 @@ equations (9)-(12) of the Methods: \eqn{U_l = Z_l^\top P y},
 \eqn{Z_l} and \eqn{P} are never constructed explicitly; block computations
 use the rotation object of the null fit.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
-}
-

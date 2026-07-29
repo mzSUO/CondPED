@@ -19,7 +19,8 @@ estimate_mt_effects(
 
 \item{G}{Numeric \verb{n x p} genotype dosage matrix coded 0/1/2.}
 
-\item{loci}{Vector of locus indices or marker identifiers to estimate.}
+\item{loci}{Vector of locus indices (integer positions in \code{G}) or marker
+identifiers (matching \code{marker_ids}) to estimate.}
 
 \item{marker_ids}{Character vector of marker identifiers; defaults to
 \code{colnames(G)}.}
@@ -39,11 +40,5 @@ and \code{diagnostics}, as specified in the interface contract.
 \description{
 Estimates the multi-trait effects of selected loci by generalised least
 squares, \eqn{\widehat\beta = J^+ U}, reusing the rotation object of the
-null fit.
+null fit. The returned covariance equals \eqn{J^+}.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
-}
-
