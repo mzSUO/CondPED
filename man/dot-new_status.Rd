@@ -7,7 +7,8 @@
 .new_status(
   ok = TRUE,
   code = c("ok", "invalid_input", "non_convergence", "rank_deficient", "ill_conditioned",
-    "bootstrap_failed", "unstable"),
+    "bootstrap_failed", "unstable", "empty_selection", "not_applicable",
+    "too_many_traits"),
   message = "",
   warnings = character()
 )
@@ -17,7 +18,8 @@
 
 \item{code}{Status code, one of \code{"ok"}, \code{"invalid_input"},
 \code{"non_convergence"}, \code{"rank_deficient"}, \code{"ill_conditioned"},
-\code{"bootstrap_failed"}, \code{"unstable"}.}
+\code{"bootstrap_failed"}, \code{"unstable"}, \code{"empty_selection"},
+\code{"not_applicable"}, \code{"too_many_traits"}.}
 
 \item{message}{Human readable message (character scalar).}
 

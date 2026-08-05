@@ -11,7 +11,8 @@
 #' @param ok Logical scalar; `TRUE` when the call succeeded.
 #' @param code Status code, one of `"ok"`, `"invalid_input"`,
 #'   `"non_convergence"`, `"rank_deficient"`, `"ill_conditioned"`,
-#'   `"bootstrap_failed"`, `"unstable"`.
+#'   `"bootstrap_failed"`, `"unstable"`, `"empty_selection"`,
+#'   `"not_applicable"`, `"too_many_traits"`.
 #' @param message Human readable message (character scalar).
 #' @param warnings Character vector of collected warnings.
 #'
@@ -20,7 +21,9 @@
 .new_status <- function(ok = TRUE,
                         code = c("ok", "invalid_input", "non_convergence",
                                  "rank_deficient", "ill_conditioned",
-                                 "bootstrap_failed", "unstable"),
+                                 "bootstrap_failed", "unstable",
+                                 "empty_selection", "not_applicable",
+                                 "too_many_traits"),
                         message = "",
                         warnings = character()) {
   code <- match.arg(code)
@@ -120,22 +123,30 @@
 #' @param symmetric Logical; set `TRUE` (default) when `A` is known to be
 #'   symmetric, enabling the Cholesky fast path and a symmetric eigen
 #'   decomposition. When `FALSE`, an SVD-based pseudo-inverse is used.
+#' @param allow_pseudoinverse Logical; when `FALSE`, a numerically
+#'   rank-deficient matrix returns `inverse = NULL` with status
+#'   `"rank_deficient"` instead of the Moore-Penrose generalised inverse.
 #'
 #' @return A list with components:
 #'   \describe{
-#'     \item{inverse}{The inverse or pseudo-inverse matrix; `NULL` on failure.}
+#'     \item{inverse}{The inverse or pseudo-inverse matrix; `NULL` on failure
+#'       or when `allow_pseudoinverse = FALSE` meets a rank-deficient matrix.}
 #'     \item{rank}{Integer; numerical rank at tolerance `tol`.}
 #'     \item{eigenvalues}{Numeric vector of eigenvalues (symmetric case) or
 #'       singular values (non-symmetric case).}
 #'     \item{condition_number}{Ratio of largest to smallest nonzero singular
 #'       value/eigenvalue magnitude; `Inf` for rank-deficient input.}
 #'     \item{method}{`"chol"` or `"eigen_pinv"`.}
+#'     \item{used_pseudoinverse}{Logical; `TRUE` when the returned inverse
+#'       was built by the eigen/SVD pseudo-inverse path rather than
+#'       Cholesky; `NA` on failure.}
 #'     \item{status}{`"ok"`, `"rank_deficient"` or `"failed"`.}
 #'   }
 #' @keywords internal
 .safe_inverse <- function(A,
                           tol = sqrt(.Machine$double.eps),
-                          symmetric = TRUE) {
+                          symmetric = TRUE,
+                          allow_pseudoinverse = TRUE) {
   A <- as.matrix(A)
   if (nrow(A) != ncol(A)) {
     stop("A must be a square matrix.", call. = FALSE)
@@ -154,8 +165,22 @@
     eigenvalues = rep(NA_real_, n),
     condition_number = NA_real_,
     method = "eigen_pinv",
+    used_pseudoinverse = NA,
     status = "failed"
   )
+  # Rank-deficient input with pseudo-inverses disabled: report the rank
+  # honestly but return no inverse.
+  not_allowed <- function(values) {
+    list(
+      inverse = NULL,
+      rank = sum(abs(values) > tol * max(abs(values))),
+      eigenvalues = values,
+      condition_number = Inf,
+      method = "eigen_pinv",
+      used_pseudoinverse = FALSE,
+      status = "rank_deficient"
+    )
+  }
 
   if (symmetric) {
     # Always determine the numerical rank from the eigenvalues first:
@@ -169,18 +194,32 @@
     if (max_abs == 0) {
       # Zero spectrum: the Moore-Penrose inverse of a zero matrix is the
       # zero matrix of the same dimension.
+      if (!allow_pseudoinverse) {
+        return(list(
+          inverse = NULL,
+          rank = 0L,
+          eigenvalues = values,
+          condition_number = Inf,
+          method = "eigen_pinv",
+          used_pseudoinverse = FALSE,
+          status = "rank_deficient"
+        ))
+      }
       return(list(
         inverse = matrix(0, n, n),
         rank = 0L,
         eigenvalues = values,
         condition_number = Inf,
         method = "eigen_pinv",
+        used_pseudoinverse = TRUE,
         status = "rank_deficient"
       ))
     }
     cutoff <- tol * max_abs
     keep <- abs(values) > cutoff
     rank <- sum(keep)
+
+    if (rank < n && !allow_pseudoinverse) return(not_allowed(values))
 
     if (rank == n && min(values) > cutoff) {
       # Numerically positive definite: Cholesky fast path.
@@ -192,6 +231,7 @@
           eigenvalues = values,
           condition_number = max(values) / min(values),
           method = "chol",
+          used_pseudoinverse = FALSE,
           status = "ok"
         ))
       }
@@ -208,6 +248,7 @@
       eigenvalues = values,
       condition_number = if (rank < n) Inf else max_abs / min(abs(values)),
       method = "eigen_pinv",
+      used_pseudoinverse = TRUE,
       status = if (rank < n) "rank_deficient" else "ok"
     ))
   }
@@ -218,18 +259,31 @@
   d <- decomp$d
   if (max(d) == 0) {
     # Zero matrix: Moore-Penrose inverse is the zero matrix.
+    if (!allow_pseudoinverse) {
+      return(list(
+        inverse = NULL,
+        rank = 0L,
+        eigenvalues = d,
+        condition_number = Inf,
+        method = "eigen_pinv",
+        used_pseudoinverse = FALSE,
+        status = "rank_deficient"
+      ))
+    }
     return(list(
       inverse = matrix(0, n, n),
       rank = 0L,
       eigenvalues = d,
       condition_number = Inf,
       method = "eigen_pinv",
+      used_pseudoinverse = TRUE,
       status = "rank_deficient"
     ))
   }
   cutoff <- tol * max(d)
   keep <- d > cutoff
   rank <- sum(keep)
+  if (rank < n && !allow_pseudoinverse) return(not_allowed(d))
   d_inv <- numeric(n)
   d_inv[keep] <- 1 / d[keep]
   inverse <- decomp$v %*% (d_inv * t(decomp$u))
@@ -239,6 +293,7 @@
     eigenvalues = d,
     condition_number = if (rank < n) Inf else max(d) / min(d),
     method = "eigen_pinv",
+    used_pseudoinverse = TRUE,
     status = if (rank < n) "rank_deficient" else "ok"
   )
 }

@@ -4,7 +4,12 @@
 \alias{.safe_inverse}
 \title{Numerically safe matrix inverse with tolerance control}
 \usage{
-.safe_inverse(A, tol = sqrt(.Machine$double.eps), symmetric = TRUE)
+.safe_inverse(
+  A,
+  tol = sqrt(.Machine$double.eps),
+  symmetric = TRUE,
+  allow_pseudoinverse = TRUE
+)
 }
 \arguments{
 \item{A}{Square numeric matrix.}
@@ -15,17 +20,25 @@ numerically zero. Defaults to \code{sqrt(.Machine$double.eps)}.}
 \item{symmetric}{Logical; set \code{TRUE} (default) when \code{A} is known to be
 symmetric, enabling the Cholesky fast path and a symmetric eigen
 decomposition. When \code{FALSE}, an SVD-based pseudo-inverse is used.}
+
+\item{allow_pseudoinverse}{Logical; when \code{FALSE}, a numerically
+rank-deficient matrix returns \code{inverse = NULL} with status
+\code{"rank_deficient"} instead of the Moore-Penrose generalised inverse.}
 }
 \value{
 A list with components:
 \describe{
-\item{inverse}{The inverse or pseudo-inverse matrix; \code{NULL} on failure.}
+\item{inverse}{The inverse or pseudo-inverse matrix; \code{NULL} on failure
+or when \code{allow_pseudoinverse = FALSE} meets a rank-deficient matrix.}
 \item{rank}{Integer; numerical rank at tolerance \code{tol}.}
 \item{eigenvalues}{Numeric vector of eigenvalues (symmetric case) or
 singular values (non-symmetric case).}
 \item{condition_number}{Ratio of largest to smallest nonzero singular
 value/eigenvalue magnitude; \code{Inf} for rank-deficient input.}
 \item{method}{\code{"chol"} or \code{"eigen_pinv"}.}
+\item{used_pseudoinverse}{Logical; \code{TRUE} when the returned inverse
+was built by the eigen/SVD pseudo-inverse path rather than
+Cholesky; \code{NA} on failure.}
 \item{status}{\code{"ok"}, \code{"rank_deficient"} or \code{"failed"}.}
 }
 }

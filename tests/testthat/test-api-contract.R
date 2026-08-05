@@ -254,10 +254,12 @@ test_that(".safe_inverse() returns the contracted fields on a full-rank matrix",
   res <- CondPED:::.safe_inverse(A)
   expect_identical(
     names(res),
-    c("inverse", "rank", "eigenvalues", "condition_number", "method", "status")
+    c("inverse", "rank", "eigenvalues", "condition_number", "method",
+      "used_pseudoinverse", "status")
   )
   expect_identical(res$status, "ok")
   expect_identical(res$method, "chol")
+  expect_identical(res$used_pseudoinverse, FALSE)
   expect_identical(res$rank, 2L)
   expect_length(res$eigenvalues, 2L)
   expect_true(is.finite(res$condition_number))
@@ -269,14 +271,29 @@ test_that(".safe_inverse() degrades gracefully on a rank-deficient matrix", {
   res <- CondPED:::.safe_inverse(B)
   expect_identical(
     names(res),
-    c("inverse", "rank", "eigenvalues", "condition_number", "method", "status")
+    c("inverse", "rank", "eigenvalues", "condition_number", "method",
+      "used_pseudoinverse", "status")
   )
   expect_identical(res$status, "rank_deficient")
   expect_identical(res$method, "eigen_pinv")
+  expect_identical(res$used_pseudoinverse, TRUE)
   expect_identical(res$rank, 1L)
   expect_identical(res$condition_number, Inf)
   # Moore-Penrose defining property: B %*% B+ %*% B == B
   expect_equal(B %*% res$inverse %*% B, B, tolerance = 1e-8)
+})
+
+test_that(".safe_inverse() honours allow_pseudoinverse = FALSE", {
+  B <- matrix(c(1, 2, 2, 4), 2, 2)
+  res <- CondPED:::.safe_inverse(B, allow_pseudoinverse = FALSE)
+  expect_null(res$inverse)
+  expect_identical(res$rank, 1L)
+  expect_identical(res$used_pseudoinverse, FALSE)
+  expect_identical(res$status, "rank_deficient")
+  # full-rank matrices are unaffected
+  A <- matrix(c(2, 0.5, 0.5, 1), 2, 2)
+  res2 <- CondPED:::.safe_inverse(A, allow_pseudoinverse = FALSE)
+  expect_equal(A %*% res2$inverse, diag(2), tolerance = 1e-10)
 })
 
 test_that(".safe_inverse() treats a numerically near-singular PD matrix as rank deficient", {
