@@ -139,7 +139,12 @@
     n_tied_solutions = integer(), status = character()
   )
   usable <- !is.na(tab$representation_loss)
-  feasible <- usable & tab$representation_loss <= tolerance
+  # Feasibility includes the exact boundary: constructions with
+  # target_loss equal to a sensitivity tolerance are feasible by
+  # definition; the 1e-10 slack absorbs floating-point noise only and
+  # is far below any truth_margin.
+  feasible <- usable &
+    tab$representation_loss <= tolerance + 1e-10
   if (!any(feasible)) return(empty)
   min_size <- min(tab$set_size[feasible])
   win <- which(feasible & tab$set_size == min_size)
@@ -197,7 +202,10 @@
   qualifies <- function(T) {
     comp_key <- .trait_set_key(setdiff(A, T))
     comp_loss <- loss_by_key[[comp_key]]
-    !is.null(comp_loss) && !is.na(comp_loss) && comp_loss > tolerance
+    # mirror of the feasibility rule: strictly above the tolerance,
+    # with the same 1e-10 floating-point slack
+    !is.null(comp_loss) && !is.na(comp_loss) &&
+      comp_loss > tolerance + 1e-10
   }
   modules <- list()
   for (T in candidates) {

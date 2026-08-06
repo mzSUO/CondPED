@@ -37,20 +37,20 @@ trait_names <- paste0("Trait", seq_len(m_tr))
 run_one <- function(arch, seed) {
   tryCatch({
     sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
-                                 architecture = arch, n_qtl = 1L,
+                                 architecture = arch,
                                  locus_pve = locus_pve, seed = seed)
     fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                        control = list(maxit = 300))
     if (!isTRUE(fit$status$ok)) return(list(ok = FALSE, status = "fit_failed"))
     scan <- scan_mt_omnibus(fit, sim$G)
-    est <- estimate_mt_effects(fit, sim$G, loci = sim$qtl_index)
+    est <- estimate_mt_effects(fit, sim$G, loci = sim$causal_index)
     att <- attribute_traits(scan, est, omnibus_method = "BH",
                             candidate_mode = "holm_fwer",
                             alpha_trait = alpha_trait)
     att_all <- attribute_traits(scan, est, omnibus_method = "BH",
                                 candidate_mode = "all_traits")
-    qtl_marker <- colnames(sim$G)[sim$qtl_index]
-    true_traits <- trait_names[sim$truth$A[[1L]]]
+    qtl_marker <- colnames(sim$G)[sim$causal_index]
+    true_traits <- sim$truth$candidate_traits
     list(ok = TRUE, qtl_marker = qtl_marker, true_traits = true_traits,
          att = att, att_all = att_all)
   }, error = function(e) list(ok = FALSE, status = conditionMessage(e)))
@@ -72,7 +72,7 @@ set_metrics <- function(cand, true_traits) {
   )
 }
 
-configs <- c("null", "single_trait", "shared_same", "shared_opposite", "dense")
+configs <- c("null", "candidate_single", "candidate_pair", "candidate_dense")
 all_out <- list()
 
 for (ci in seq_along(configs)) {
@@ -135,7 +135,7 @@ null_fw <- mean(null_tab$n_false[null_ok] > 0)
 cat(sprintf("null: false-candidate rate = %.3f (nominal <= 0.05)\n", null_fw))
 report(null_fw <= 0.15, "null: false-candidate rate <= 0.15 (pilot)")
 
-eff_cfgs <- c("single_trait", "shared_same", "shared_opposite", "dense")
+eff_cfgs <- c("candidate_single", "candidate_pair", "candidate_dense")
 fwer <- unlist(lapply(eff_cfgs, function(cfg) {
   tab <- all_out[[cfg]]
   (tab$n_false[tab$ok == 1L] > 0)

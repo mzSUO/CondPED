@@ -231,7 +231,7 @@ decompose_conditional_effects <- function(
         representation_loss = out$representation_loss,
         decomposition_error = out$decomposition_error,
         feasible_primary = !is.na(out$representation_loss) &&
-          out$representation_loss <= tolerance,
+          out$representation_loss <= tolerance + 1e-10,
         rank_Sigma_SS = out$rank_Sigma_SS,
         rank_Omega = out$rank_Omega,
         condition_Sigma_SS = out$condition_Sigma_SS,

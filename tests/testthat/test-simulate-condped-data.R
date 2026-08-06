@@ -1,206 +1,222 @@
-# Fast deterministic unit tests for simulate_condped_data().
-# Heavy statistical calibration (empirical variances, eigenvalue dispersion
-# gates) lives in inst/validation/validate-simulate-condped-data.R.
+# Tests for simulate_condped_data() (v1.0 Stage 4).
+#
+# All checks read population truth only; none of the acceptance logic
+# may depend on sample statistics (frozen rule).
 
-test_that("return structure and dimensions match the contract", {
-  sim <- simulate_condped_data(n = 120, m = 4, p = 300, n_qtl = 2, seed = 11)
-  expect_equal(dim(sim$Y), c(120L, 4L))
-  expect_equal(dim(sim$W), c(120L, 1L))
-  expect_equal(dim(sim$G), c(120L, 300L))
-  expect_equal(dim(sim$K_bg), c(120L, 120L))
-  expect_length(sim$qtl_index, 2L)
-  expect_true(all(sim$qtl_index %in% seq_len(300)))
+sim_archs <- c("null", "candidate_single", "candidate_pair",
+               "candidate_dense", "representative_singleton",
+               "representative_pair", "representative_full",
+               "irreducible_singleton", "irreducible_pair",
+               "multiple_modules")
 
-  truth <- sim$truth
-  expect_equal(dim(truth$B_Q), c(2L, 4L))
-  expect_equal(dim(truth$beta), c(2L, 4L))
-  expect_identical(truth$B_Q, truth$beta)
-  expect_length(truth$A, 2L)
-  expect_length(truth$D, 2L)
-  expect_equal(dim(truth$eta), c(2L, 4L))
-  expect_equal(dim(truth$locus_pve), c(2L, 4L))
-  expect_equal(dim(truth$conditional_pve), c(2L, 4L))
-  for (nm in c("Sigma_Q", "Sigma_G_bg", "Sigma_G_total", "Sigma_E",
-               "Sigma_P_total")) {
-    expect_equal(dim(truth[[nm]]), c(4L, 4L), label = nm)
-  }
-  expect_equal(dim(truth$gamma), c(4L, 3L))
-  expect_equal(dim(truth$C), c(4L, 4L))
+sim <- function(architecture, seed = 1, ...) {
+  simulate_condped_data(n = 80, m = 4L, p = 150L,
+                        architecture = architecture,
+                        correlation = "block", seed = seed, ...)
+}
 
-  expect_equal(dim(sim$latent$U), c(120L, 4L))
-  expect_equal(dim(sim$latent$E), c(120L, 4L))
-  expect_null(simulate_condped_data(
-    n = 60, m = 2, p = 100, return_latent = FALSE, seed = 1
-  )$latent)
+# ---- contract surface ---------------------------------------------------------
 
-  expect_true(sim$status$ok)
-  expect_identical(sim$status$code, "ok")
-  expect_true(all(c("mean_diag_K", "K_eigen_sd", "K_rank",
-                    "min_eigen_Sigma_G_bg") %in% names(sim$diagnostics)))
-  expect_true(all(c("seed", "attempts", "settings") %in% names(sim$generator)))
+test_that("architecture enumeration matches the contract exactly", {
+  expect_identical(eval(formals(simulate_condped_data)$architecture),
+                   sim_archs)
 })
 
-test_that("K_bg is scaled to mean diagonal 1", {
-  sim <- simulate_condped_data(n = 150, m = 4, p = 400, seed = 21)
-  expect_lt(abs(sim$diagnostics$mean_diag_K - 1), 1e-10)
-  expect_lt(abs(mean(diag(sim$K_bg)) - 1), 1e-10)
-})
-
-test_that("true contrasts satisfy the model-scale orthogonality identity", {
-  sim <- simulate_condped_data(n = 100, m = 4, p = 200, seed = 31)
-  Sigma_P <- sim$truth$Sigma_P_total
-  gamma <- sim$truth$gamma
-  C <- sim$truth$C
-  for (i in seq_len(4)) {
-    # ||Sigma_{-i,-i} gamma_{i,-i} - Sigma_{-i,i}||_inf < 1e-10
-    resid <- Sigma_P[-i, -i] %*% gamma[i, ] - Sigma_P[-i, i]
-    expect_lt(max(abs(resid)), 1e-10)
-    # contrast vector: c_i = e_i - E_{-i} gamma_{i,-i}
-    expect_identical(unname(C[i, i]), 1)
-    expect_equal(unname(C[-i, i]), -gamma[i, ], tolerance = 1e-12)
-  }
-})
-
-test_that("eta identity holds for every architecture", {
-  for (arch in c("null", "single_trait", "shared_same", "shared_opposite",
-                 "dense", "covariance_aligned", "conditional_deviation",
-                 "projection_induced")) {
-    sim <- simulate_condped_data(
-      n = 80, m = 4, p = 200, architecture = arch,
-      n_qtl = 2, delta = 0.5, seed = 41
-    )
-    expect_equal(
-      sim$truth$eta, sim$truth$beta %*% sim$truth$C,
-      tolerance = 1e-12, label = paste("eta = beta %*% C for", arch)
-    )
-    # D is always a subset of A
-    for (l in seq_len(2)) {
-      expect_true(all(sim$truth$D[[l]] %in% sim$truth$A[[l]]),
-                  label = paste("D subset of A for", arch))
-    }
-  }
-})
-
-test_that("covariance_aligned forces the target-trait eta to zero", {
-  sim <- simulate_condped_data(
-    n = 100, m = 4, p = 200, architecture = "covariance_aligned",
-    target_trait = 1L, n_qtl = 2, seed = 51
+test_that("truth uses only v1.0 field names", {
+  s <- sim("candidate_pair")
+  expect_identical(
+    names(s$truth),
+    c("beta", "candidate_traits", "subset_table",
+      "minimum_representative_sets", "irreducible_modules",
+      "tolerance_path", "locus_pve", "target_loss", "delta",
+      "Sigma_causal", "Sigma_G_total", "Sigma_G_bg", "Sigma_E",
+      "Sigma_P_total")
   )
-  expect_lt(max(abs(sim$truth$eta[, 1])), 1e-10)
-  # the effect itself is generally non-zero on the target trait
-  expect_true(any(sim$truth$beta[, 1] != 0))
+  expect_null(s$latent)          # return_latent = FALSE is the default
+  expect_false(any(c("D", "eta", "gamma", "C", "conditional_profile",
+                     "conditional_partitions", "conditional_components",
+                     "B_Q") %in% names(s$truth)))
 })
 
-test_that("conditional_deviation produces non-zero target-trait deviation", {
-  sim <- simulate_condped_data(
-    n = 100, m = 4, p = 200, architecture = "conditional_deviation",
-    target_trait = 1L, delta = 0.5, n_qtl = 2, seed = 55
-  )
-  expect_true(all(sim$truth$eta[, 1] > 0))
-  # and the deviation places the target trait in D
-  for (l in seq_len(2)) {
-    expect_true(1L %in% sim$truth$D[[l]])
+test_that("seed reproduction is value-identical; different seeds differ", {
+  s1 <- sim("representative_singleton", seed = 5)
+  s2 <- sim("representative_singleton", seed = 5)
+  expect_identical(s1$Y, s2$Y)
+  expect_identical(s1$truth$beta, s2$truth$beta)
+  s3 <- sim("representative_singleton", seed = 6)
+  expect_false(isTRUE(all.equal(s1$Y, s3$Y)))
+})
+
+test_that("candidate truth equals the nonzero-beta traits", {
+  for (a in sim_archs[-1]) {
+    s <- sim(a, seed = 3)
+    beta <- s$truth$beta[1, ]
+    expect_identical(s$truth$candidate_traits,
+                     unname(paste0("Trait", seq_len(4))[beta != 0]),
+                     label = a)
+  }
+  s0 <- sim("null")
+  expect_identical(s0$truth$candidate_traits, character())
+  expect_true(all(s0$truth$beta == 0))
+})
+
+test_that("causal variant stays out of K_bg", {
+  s <- simulate_condped_data(n = 400, m = 4L, p = 200L,
+                             architecture = "candidate_single",
+                             correlation = "independent",
+                             structured = TRUE, seed = 9)
+  zc <- as.vector(scale(s$G[, s$causal_index]))
+  outer_z <- outer(zc, zc)
+  # if the causal marker leaked into the GRM, K_bg would correlate with
+  # zc %o% zc at roughly 1/p; excluded it stays near zero
+  cc <- stats::cor(K_vec <- s$K_bg[upper.tri(s$K_bg)],
+                   outer_z[upper.tri(outer_z)])
+  expect_lt(abs(cc), 0.05)
+  expect_equal(mean(diag(s$K_bg)), 1, tolerance = 1e-8)
+})
+
+test_that("Sigma_G_bg is PSD and PVE hits the target", {
+  for (a in sim_archs[-1]) {
+    s <- sim(a, seed = 4)
+    expect_gt(CondPED:::.min_eigen_sym(s$truth$Sigma_G_bg), -1e-8)
+    lp <- s$truth$locus_pve[s$truth$candidate_traits]
+    expect_equal(mean(lp), 0.01, tolerance = 1e-8, label = a)
+    # Sigma_P = Sigma_G_bg + Sigma_causal + Sigma_E
+    expect_equal(s$truth$Sigma_P_total,
+                 s$truth$Sigma_G_bg + s$truth$Sigma_causal + s$truth$Sigma_E,
+                 tolerance = 1e-10)
   }
 })
 
-test_that("projection_induced has beta = 0 but eta != 0 on the target trait", {
-  sim <- simulate_condped_data(
-    n = 100, m = 4, p = 200, architecture = "projection_induced",
-    target_trait = 1L, n_qtl = 2, seed = 61
-  )
-  expect_identical(as.numeric(sim$truth$beta[, 1]), c(0, 0))
-  expect_true(all(abs(sim$truth$eta[, 1]) > 1e-3))
-  # projection-induced conditional signal must not enter A
-  for (l in seq_len(2)) {
-    expect_false(1L %in% sim$truth$A[[l]])
-  }
-})
-
-test_that("covariance ground truth is consistent and PSD", {
-  sim <- simulate_condped_data(n = 100, m = 4, p = 200,
-                               architecture = "dense", n_qtl = 2, seed = 71)
-  truth <- sim$truth
-  expect_equal(truth$Sigma_G_bg + truth$Sigma_Q, truth$Sigma_G_total,
-               tolerance = 1e-12)
-  expect_equal(truth$Sigma_G_total + truth$Sigma_E, truth$Sigma_P_total,
-               tolerance = 1e-12)
-  # total phenotypic variance is standardised to 1 per trait
-  expect_equal(unname(diag(truth$Sigma_P_total)), rep(1, 4),
-               tolerance = 1e-12)
-  expect_gte(min(eigen(truth$Sigma_G_bg, symmetric = TRUE,
-                       only.values = TRUE)$values), -1e-10)
-  expect_gte(sim$diagnostics$min_eigen_Sigma_G_bg, -1e-10)
-})
-
-test_that("PSD enforcement rescales and keeps every truth component in sync", {
-  # Deliberately impossible target: 3 dense loci with average PVE 0.4 each
-  # cannot fit inside a total genetic variance of 0.5.
-  sim <- simulate_condped_data(
-    n = 100, m = 4, p = 200, architecture = "dense", n_qtl = 3,
-    locus_pve = 0.4, max_attempts = 2L, seed = 81
-  )
-  expect_true(sim$generator$scaled)
-  expect_length(sim$status$warnings, 1L)
-  truth <- sim$truth
-  expect_gte(sim$diagnostics$min_eigen_Sigma_G_bg, -1e-8)
-  expect_equal(truth$Sigma_G_bg + truth$Sigma_Q, truth$Sigma_G_total,
+test_that("PVE scaling leaves the structural truth unchanged", {
+  s1 <- sim("representative_pair", seed = 8, locus_pve = 0.01)
+  s2 <- sim("representative_pair", seed = 8, locus_pve = 0.05)
+  expect_equal(s1$truth$subset_table$representation_loss,
+               s2$truth$subset_table$representation_loss,
                tolerance = 1e-8)
-  expect_equal(truth$eta, truth$beta %*% truth$C, tolerance = 1e-10)
-  for (l in seq_len(3)) {
-    expect_identical(truth$A[[l]], which(truth$beta[l, ] != 0))
-    expect_true(all(truth$D[[l]] %in% truth$A[[l]]))
+  expect_identical(s1$truth$minimum_representative_sets$trait_key,
+                   s2$truth$minimum_representative_sets$trait_key)
+  expect_identical(s1$truth$irreducible_modules$trait_key,
+                   s2$truth$irreducible_modules$trait_key)
+  # but the effect vector really was rescaled
+  expect_gt(norm(s2$truth$beta, "2"), 2 * norm(s1$truth$beta, "2"))
+})
+
+# ---- closed-form construction (Methods eqs. 39-41) -----------------------------
+
+test_that("closed form: target set has population loss exactly target_loss", {
+  for (a in c("representative_singleton", "representative_pair")) {
+    s <- sim(a, seed = 11, target_loss = 0.05)
+    key <- paste(s$generator$settings$target_representative_set,
+                 collapse = "|")
+    tab <- s$truth$subset_table
+    expect_equal(tab$representation_loss[tab$representing_key == key],
+                 0.05, tolerance = 1e-8, label = a)
+    expect_equal(s$truth$target_loss, 0.05)
+    expect_true(is.finite(s$truth$delta))
   }
-
-  # the projection identity survives scaling as well
-  sim_ca <- simulate_condped_data(
-    n = 100, m = 4, p = 200, architecture = "covariance_aligned",
-    n_qtl = 3, locus_pve = 0.4, max_attempts = 2L, seed = 81
-  )
-  expect_true(sim_ca$generator$scaled)
-  expect_lt(max(abs(sim_ca$truth$eta[, 1])), 1e-10)
 })
 
-test_that("the same seed reproduces the data set exactly", {
-  a <- simulate_condped_data(n = 100, m = 4, p = 300, n_qtl = 2, seed = 91)
-  b <- simulate_condped_data(n = 100, m = 4, p = 300, n_qtl = 2, seed = 91)
-  expect_identical(a, b)
-  c <- simulate_condped_data(n = 100, m = 4, p = 300, n_qtl = 2, seed = 92)
-  expect_false(identical(a$Y, c$Y))
+# ---- per-scene acceptance conditions --------------------------------------------
+
+test_that("representative_singleton: target is the minimum feasible set", {
+  s <- sim("representative_singleton", seed = 21)
+  reps <- s$truth$minimum_representative_sets
+  reps <- reps[reps$tolerance == 0.10, ]
+  expect_identical(reps$set_size[1], 1L)
+  expect_true("Trait1" %in% reps$trait_key)
+  # no smaller (empty) set is ever feasible: loss(empty) = 1 > tau
+  tab <- s$truth$subset_table
+  expect_gt(tab$representation_loss[tab$representing_key == "<empty>"], 0.10)
 })
 
-test_that("group structure yields eigenvalue dispersion in K_bg", {
-  sim_s <- simulate_condped_data(n = 200, m = 2, p = 2000, structured = TRUE,
-                                 n_groups = 8L, fst = 0.05, seed = 101)
-  sim_u <- simulate_condped_data(n = 200, m = 2, p = 2000, structured = FALSE,
-                                 seed = 101)
-  # deterministic in-environment: mild Balding-Nichols differentiation
-  # (fst = 0.05, 8 groups) lifts sd(eigen K) by a stable factor of ~1.8
-  expect_gt(sim_s$diagnostics$K_eigen_sd,
-            1.5 * sim_u$diagnostics$K_eigen_sd)
+test_that("representative_pair: pair feasible, all singletons infeasible", {
+  s <- sim("representative_pair", seed = 22)
+  tab <- s$truth$subset_table
+  singles <- tab[tab$set_size == 1L, ]
+  expect_true(all(singles$representation_loss > 0.10))
+  reps <- s$truth$minimum_representative_sets
+  reps <- reps[reps$tolerance == 0.10, ]
+  expect_true("Trait1|Trait2" %in% reps$trait_key)
+  expect_identical(reps$set_size[1], 2L)
 })
 
-test_that("null architecture carries no focal signal", {
-  sim <- simulate_condped_data(n = 80, m = 4, p = 200,
-                               architecture = "null", n_qtl = 2, seed = 111)
-  expect_identical(as.numeric(sim$truth$beta), rep(0, 8))
-  expect_identical(as.numeric(sim$truth$Sigma_Q), rep(0, 16))
-  for (l in seq_len(2)) {
-    expect_length(sim$truth$A[[l]], 0L)
-    expect_length(sim$truth$D[[l]], 0L)
+test_that("representative_full: every proper subset is infeasible", {
+  s <- sim("representative_full", seed = 23)
+  tab <- s$truth$subset_table
+  proper <- tab[tab$set_size < 4L, ]
+  expect_true(all(proper$representation_loss > 0.10))
+  reps <- s$truth$minimum_representative_sets
+  reps <- reps[reps$tolerance == 0.10, ]
+  expect_identical(reps$trait_key, "Trait1|Trait2|Trait3|Trait4")
+})
+
+test_that("irreducible_singleton: deleting the target trait is infeasible", {
+  s <- sim("irreducible_singleton", seed = 24)
+  tab <- s$truth$subset_table
+  comp <- paste(setdiff(s$truth$candidate_traits, "Trait1"), collapse = "|")
+  expect_gt(tab$representation_loss[tab$representing_key == comp], 0.10)
+  mods <- s$truth$irreducible_modules
+  expect_true("Trait1" %in% mods$trait_key[mods$tolerance == 0.10])
+})
+
+test_that("irreducible_pair: joint deletion infeasible, single deletions feasible", {
+  s <- sim("irreducible_pair", seed = 25)
+  tab <- s$truth$subset_table
+  loss_of <- function(key) tab$representation_loss[tab$representing_key == key]
+  A <- s$truth$candidate_traits
+  expect_gt(loss_of(paste(setdiff(A, c("Trait1", "Trait2")), collapse = "|")),
+            0.10)
+  expect_lte(loss_of(paste(setdiff(A, "Trait1"), collapse = "|")), 0.10)
+  expect_lte(loss_of(paste(setdiff(A, "Trait2"), collapse = "|")), 0.10)
+  mods <- s$truth$irreducible_modules
+  expect_true("Trait1|Trait2" %in% mods$trait_key[mods$tolerance == 0.10])
+})
+
+test_that("multiple_modules: extraction matches the preset exactly", {
+  s <- sim("multiple_modules", seed = 26)
+  mods <- s$truth$irreducible_modules
+  expect_identical(sort(mods$trait_key[mods$tolerance == 0.10]),
+                   sort(c("Trait1", "Trait3|Trait4")))
+})
+
+test_that("truth_margin keeps every loss away from the boundary", {
+  for (a in c("representative_singleton", "representative_pair",
+              "representative_full", "irreducible_singleton",
+              "irreducible_pair", "multiple_modules")) {
+    s <- sim(a, seed = 30)
+    losses <- s$truth$subset_table$representation_loss
+    expect_true(all(abs(losses - 0.10) >= 0.02), label = a)
   }
-  expect_true(sim$status$ok)
+  # margin that target_loss violates is rejected at the interface
+  expect_error(sim("representative_singleton", target_loss = 0.09,
+                   truth_margin = 0.02),
+               class = "condped_invalid_input")
 })
 
-test_that("input validation rejects invalid arguments", {
-  expect_error(simulate_condped_data(n = 1), "n must be")
-  expect_error(simulate_condped_data(m = 1), "m must be")
-  expect_error(simulate_condped_data(maf_range = c(0.6, 0.7)), "maf_range")
-  expect_error(simulate_condped_data(target_trait = 99L), "target_trait")
-  expect_error(simulate_condped_data(h2 = 1.5), "h2")
-  expect_error(simulate_condped_data(p = 10, n_qtl = 20L), "n_qtl")
-  expect_error(simulate_condped_data(structured = TRUE, fst = 0), "fst")
-  R_bad <- diag(4); R_bad[1, 2] <- R_bad[2, 1] <- 0.5
-  expect_error(
-    simulate_condped_data(R_G = R_bad * 2), "R_G"
-  )
+test_that("null scene: empty truth, zero effects, legal structure", {
+  s <- sim("null", seed = 31)
+  expect_true(s$status$ok)
+  expect_identical(nrow(s$truth$subset_table), 0L)
+  expect_identical(nrow(s$truth$minimum_representative_sets), 0L)
+  expect_identical(nrow(s$truth$irreducible_modules), 0L)
+  expect_identical(s$truth$locus_pve, setNames(rep(0, 4),
+                                               paste0("Trait", 1:4)))
+})
+
+test_that("input validation", {
+  expect_error(simulate_condped_data(architecture = "conditional_deviation"),
+               class = "error")   # removed v0.3 architecture
+  expect_error(simulate_condped_data(n = 1, architecture = "null"),
+               class = "condped_invalid_input")
+  expect_error(simulate_condped_data(n = 80, architecture = "null",
+                                     tolerance = 1),
+               class = "condped_invalid_input")
+  expect_error(sim("null", target_loss = -0.1),
+               class = "condped_invalid_input")
+  expect_error(sim("null", truth_margin = -1),
+               class = "condped_invalid_input")
+  expect_error(simulate_condped_data(n = 80, m = 3L,
+                                     architecture = "multiple_modules"),
+               class = "condped_invalid_input")
 })

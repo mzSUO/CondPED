@@ -2,144 +2,124 @@
 % Please edit documentation in R/simulate-condped-data.R
 \name{simulate_condped_data}
 \alias{simulate_condped_data}
-\title{Simulate multi-trait data with known ground truth}
+\title{Simulate CondPED data with population structural truth (v1.0)}
 \usage{
 simulate_condped_data(
   n = 1000L,
   m = 4L,
-  p = 2000L,
+  p = 1000L,
   maf_range = c(0.05, 0.5),
   h2 = rep(0.5, m),
   R_G = NULL,
   R_E = NULL,
-  architecture = c("null", "single_trait", "shared_same", "shared_opposite", "dense",
-    "covariance_aligned", "conditional_deviation", "projection_induced"),
+  architecture = c("null", "candidate_single", "candidate_pair", "candidate_dense",
+    "representative_singleton", "representative_pair", "representative_full",
+    "irreducible_singleton", "irreducible_pair", "multiple_modules"),
   locus_pve = 0.01,
-  delta = 0,
-  target_trait = 1L,
+  tolerance = 0.1,
+  target_loss = 0.05,
+  target_representative_set = NULL,
+  target_irreducible_modules = NULL,
+  correlation = c("block", "independent"),
+  structured = TRUE,
   n_groups = 8L,
   fst = 0.05,
-  structured = TRUE,
-  n_qtl = 1L,
-  max_attempts = 100L,
+  truth_margin = 0.02,
+  max_attempts = 200L,
   seed = NULL,
-  return_latent = TRUE
+  return_latent = FALSE
 )
 }
 \arguments{
-\item{n}{Positive integer; number of individuals. Main simulations use
-500, 750, 1000 or 1250.}
+\item{n}{Number of individuals.}
 
-\item{m}{Integer (>= 2); number of traits (default 4).}
+\item{m}{Number of traits.}
 
-\item{p}{Integer; total number of background markers.}
+\item{p}{Number of markers.}
 
-\item{maf_range}{Numeric vector of length 2 giving the range of minor
-allele frequencies.}
+\item{maf_range}{Range for base minor allele frequencies.}
 
-\item{h2}{Numeric vector of length \code{m} (or a recycled scalar); target
-SNP heritabilities. Total phenotypic variance per trait is 1.}
+\item{h2}{Trait heritabilities (length 1 or \code{m}).}
 
-\item{R_G}{Optional \verb{m x m} genetic correlation matrix; \code{NULL} uses an
-exchangeable correlation of 0.4.}
+\item{R_G, R_E}{Optional \verb{m x m} correlation matrices; default from
+\code{correlation}.}
 
-\item{R_E}{Optional \verb{m x m} residual correlation matrix; \code{NULL} uses an
-exchangeable correlation of 0.4.}
+\item{architecture}{One of the ten frozen scenarios; see the
+interface contract.}
 
-\item{architecture}{Genetic architecture of the focal locus/loci; one of
-\code{"null"}, \code{"single_trait"}, \code{"shared_same"}, \code{"shared_opposite"},
-\code{"dense"}, \code{"covariance_aligned"}, \code{"conditional_deviation"},
-\code{"projection_induced"}.}
+\item{locus_pve}{Target mean per-candidate-trait PVE of the causal
+variant.}
 
-\item{locus_pve}{Scalar or per-active-trait vector of target locus PVE.
-A single scaling factor per locus preserves the effect-template
-ratios, so the target is matched on average over the active traits
-(a vector is summarised by its mean).}
+\item{tolerance}{Primary loss tolerance tau.}
 
-\item{delta}{True deviation effect in the conditional-deviation
-architecture; after scaling, the target-trait conditional effect is
-exactly \code{s_l * delta}.}
+\item{target_loss}{Closed-form target loss \code{r}; only used by the
+representative scenarios.}
 
-\item{target_trait}{Integer index of the target trait.}
+\item{target_representative_set}{Optional target set for the
+representative scenarios (defaults: trait 1 / traits 1-2).}
 
-\item{n_groups}{Number of families/subpopulations used when
-\code{structured = TRUE}.}
+\item{target_irreducible_modules}{Optional list of module sets for
+the irreducible scenarios (defaults: trait 1 / traits 1-2 /
+\code{{1}} and \verb{\{3..m\}}).}
 
-\item{fst}{Mild between-group allele frequency differentiation
-(Balding-Nichols parameter, must be > 0 when \code{structured = TRUE}).}
+\item{correlation}{\code{"block"} (consecutive trait pairs form modules
+with within-module correlation 0.6 and between-module 0.2) or
+\code{"independent"}. Note that joint irreducible
+modules (\code{irreducible_pair}, \code{multiple_modules}) require correlated
+traits; under \code{"independent"} their acceptance rule correctly
+never passes and the function returns status \code{unstable}.}
 
-\item{structured}{Logical; when \code{TRUE} individuals carry family/subgroup
-structure so that the genomic relationship matrix does not degenerate
-to the identity.}
+\item{structured}{Logical; group structure for GRM eigenvalue
+dispersion.}
 
-\item{n_qtl}{Integer; number of focal QTL (sampled without replacement).}
+\item{n_groups, fst}{Balding-Nichols group structure parameters.}
 
-\item{max_attempts}{Maximum number of re-draws when the background
-genetic covariance is not positive semi-definite, before falling back
-to a recorded scaling of the focal effects.}
+\item{truth_margin}{Minimum allowed distance between any subset
+loss and \code{tolerance} in the structural scenarios.}
+
+\item{max_attempts}{Maximum number of generation attempts.}
 
 \item{seed}{Optional random seed.}
 
-\item{return_latent}{Logical; whether to return latent genetic and
-residual values.}
+\item{return_latent}{Logical; keep \code{U} and \code{E} (default \code{FALSE}).}
 }
 \value{
-A list with components:
-\describe{
-\item{Y}{\verb{n x m} phenotype matrix.}
-\item{W}{\verb{n x 1} intercept design matrix.}
-\item{G}{\verb{n x p} genotype dosage matrix (0/1/2).}
-\item{K_bg}{\verb{n x n} background genomic relationship matrix,
-\code{mean(diag(K_bg)) = 1}.}
-\item{qtl_index}{Integer vector of focal QTL positions in \code{G}.}
-\item{truth}{List with \code{B_Q} and \code{beta} (\verb{n_qtl x m} effect
-matrices), \code{A} (per-locus associated-trait sets), \code{D} (per-locus
-conditional-deviation sets, subsets of \code{A}), \code{eta} (true
-conditional effects), \code{locus_pve}, \code{conditional_pve},
-\code{Sigma_Q}, \code{Sigma_G_bg}, \code{Sigma_G_total}, \code{Sigma_E},
-\code{Sigma_P_total}, \code{gamma} (\verb{m x (m-1)}, row \code{i} is
-\eqn{\gamma_{i,-i}}) and \code{C} (\verb{m x m}, column \code{i} is the contrast
-vector \eqn{c_i}).}
-\item{latent}{\code{list(U, E)} when \code{return_latent = TRUE}, else
-\code{NULL}.}
-\item{generator}{List with \code{seed}, \code{attempts}, \code{scaled},
-\code{scale_factor} and \code{settings}.}
-\item{status}{Standard CondPED status list.}
-\item{diagnostics}{List with \code{mean_diag_K}, \code{K_eigen_sd}, \code{K_rank}
-and \code{min_eigen_Sigma_G_bg}.}
-}
+A list with components \code{Y}, \code{W}, \code{G}, \code{K_bg},
+\code{causal_index}, \code{truth} (list with \code{beta}, \code{candidate_traits},
+\code{subset_table}, \code{minimum_representative_sets},
+\code{irreducible_modules}, \code{tolerance_path}, \code{locus_pve},
+\code{target_loss}, \code{delta}, \code{Sigma_causal}, \code{Sigma_G_total},
+\code{Sigma_G_bg}, \code{Sigma_E}, \code{Sigma_P_total}), \code{generator}, \code{status}
+and \code{diagnostics}.
 }
 \description{
-Generates simulated data with a known multi-trait effect matrix, true
-associated-trait sets, true conditional-deviation sets, theoretical PVE
-and complete covariance ground truth, following the interface contract
-(section 4.1) and the Methods Simulation Study (sections 5.2-5.4).
+Generates individual-level multi-trait data with one simulated
+causal variant and the full population-level structural truth: the
+candidate trait set, the complete subset loss table, the minimum
+representative trait sets and the irreducible trait modules. All
+truth is computed with the SAME deterministic loss path used by
+estimation (\code{\link[=.compute_subset_loss]{.compute_subset_loss()}} and the Stage-2 extractors),
+evaluated on population parameters.
 }
 \details{
-Markers are generated independently (no LD blocks). With
-\code{structured = TRUE}, individuals belong to \code{n_groups} families or
-subpopulations whose allele frequencies are mildly differentiated
-(Balding-Nichols model with parameter \code{fst}), so that the genomic
-relationship matrix keeps an identifiable eigenvalue dispersion instead
-of degenerating to the identity. The background relationship matrix is
-built from the standardised background genotypes and scaled to
-\code{mean(diag(K_bg)) = 1}. The polygenic background is drawn through the
-eigen decomposition of \code{K_bg}.
+The data-generating model is
+\deqn{Y = WB + \tilde{x}_l\beta_l^{\top} + U + E}
+with \code{U ~ MN(0, K_bg, Sigma_G_bg)} and \code{E ~ MN(0, I_n, Sigma_E)}.
+The causal variant never enters the background GRM, and
+\verb{Sigma_G_bg = Sigma_G_total - v_l beta beta'}; only generations
+with positive semi-definite \code{Sigma_G_bg} are accepted. Effect
+vectors are scaled as a whole to the target PVE; the representation
+loss is invariant to this scaling, and the truth tables are
+computed AFTER scaling from the final beta and Sigma.
 
-The focal QTL covariance
-\eqn{\Sigma_Q = \sum_l v_l \beta_l \beta_l^\top} (with
-\eqn{v_l = 2 p_l (1 - p_l)}) is subtracted from the target total genetic
-covariance, \eqn{\Sigma_{G,bg} = \Sigma_{G,total} - \Sigma_Q}. If
-\eqn{\Sigma_{G,bg}} is not positive semi-definite, the focal loci and
-their effects are re-drawn (up to \code{max_attempts} times); as a last
-resort the focal effects are shrunk by a recorded scalar factor so that
-PSD holds, and every component of \code{truth} is updated accordingly.
-
-True conditional projection coefficients are computed from the total
-phenotypic covariance \eqn{\Sigma_{P,total} = \Sigma_{G,total} +
-\Sigma_E} once, and the true conditional effects satisfy
-\eqn{\eta_{il} = c_i^\top \beta_l}. In the \code{covariance_aligned}
-architecture the target-trait \eqn{\eta} is exactly zero by
-construction; in \code{projection_induced} the target-trait \eqn{\beta = 0}
-while \eqn{\eta \neq 0} under correlated traits.
+\code{representative_singleton}/\code{representative_pair} use the closed-form
+construction of Methods eqs. (39)-(41): with
+\verb{R = A \\ S*},
+\deqn{\beta_R = \Gamma_{R|S*}^{\top}\beta_{S*} + \delta d,\qquad
+  d^{\top}\Omega^{-1}d = 1,\qquad
+  \delta = \sqrt{\frac{r\,\beta_{S*}^{\top}\Sigma_{S*S*}^{-1}\beta_{S*}}
+  {1-r}}}
+so that the target set has population loss exactly \code{r = target_loss}.
+All acceptance rules read population beta, Sigma and the truth
+subset table only -- never sample p-values or fitted results.
 }

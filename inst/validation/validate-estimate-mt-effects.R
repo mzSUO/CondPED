@@ -2,7 +2,7 @@
 #
 # NOT part of testthat. Heavy acceptance per contract section 4.4:
 #   - bias, RMSE and 95% coverage of beta_hat at the focal QTL across
-#     architectures (single_trait, shared_same, shared_opposite, dense);
+#     architectures (candidate_single, candidate_pair, candidate_dense);
 #   - rank-deficient / failure proportions;
 #   - all replicates (failures included) kept in the results table / RDS.
 #
@@ -28,7 +28,7 @@ p_snp <- 400L
 out_dir <- file.path("inst", "validation", "output")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-architectures <- c("single_trait", "shared_same", "shared_opposite", "dense")
+architectures <- c("candidate_single", "candidate_pair", "candidate_dense")
 all_out <- list()
 
 for (ai in seq_along(architectures)) {
@@ -47,14 +47,14 @@ for (ai in seq_along(architectures)) {
   for (r in seq_len(n_rep)) {
     out <- tryCatch({
       sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
-                                   architecture = arch, n_qtl = 1L,
+                                   architecture = arch,
                                    locus_pve = 0.03, seed = 21000 + 1000 * ai + r)
       fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                          control = list(maxit = 300))
       if (!isTRUE(fit$status$ok)) {
         return(list(ok = FALSE, status = "fit_failed"))
       }
-      est <- estimate_mt_effects(fit, sim$G, loci = sim$qtl_index)
+      est <- estimate_mt_effects(fit, sim$G, loci = sim$causal_index)
       list(ok = TRUE, beta = est$beta[1, ],
            se = est$effects_long$se,
            true = sim$truth$beta[1, ], converged = fit$convergence$code == 0)

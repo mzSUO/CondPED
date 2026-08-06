@@ -3,7 +3,7 @@
 # NOT part of testthat. Heavy acceptance per contract section 4.3:
 #   1. Type I error under the null architecture;
 #   2. QQ data and genomic-control lambda;
-#   3. power under single_trait / shared_same / shared_opposite;
+#   3. power under candidate_single / candidate_pair / candidate_dense;
 #   4. rank-deficient and failure proportions;
 #   5. all replicates (failures included) kept in the results table / RDS.
 #
@@ -36,7 +36,7 @@ dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 run_one <- function(arch, seed) {
   tryCatch({
     sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
-                                 architecture = arch, n_qtl = 1L,
+                                 architecture = arch,
                                  locus_pve = 0.03, seed = seed)
     fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                        control = list(maxit = 300))
@@ -50,7 +50,7 @@ run_one <- function(arch, seed) {
       p_values = scan$omnibus$p_value[keep],
       Q = scan$omnibus$Q[keep],
       df = scan$omnibus$df[keep],
-      qtl_p = scan$omnibus$p_value[sim$qtl_index],
+      qtl_p = scan$omnibus$p_value[sim$causal_index],
       n_rank_deficient = scan$diagnostics$n_rank_deficient,
       n_filtered = scan$diagnostics$n_filtered,
       converged = fit$convergence$code == 0
@@ -118,9 +118,9 @@ qq <- data.frame(
 cat("\n== 2. Power under effect architectures ==\n")
 power_tab <- data.frame(architecture = character(), power = numeric(),
                         n_ok = integer(), stringsAsFactors = FALSE)
-for (arch in c("single_trait", "shared_same", "shared_opposite")) {
-  out <- collect(arch, 12000 + match(arch, c("single_trait", "shared_same",
-                                             "shared_opposite")) * 1000)
+for (arch in c("candidate_single", "candidate_pair", "candidate_dense")) {
+  out <- collect(arch, 12000 + match(arch, c("candidate_single", "candidate_pair",
+                                             "candidate_dense")) * 1000)
   ok_res <- Filter(function(x) isTRUE(x$ok), out$res)
   qtl_p <- vapply(ok_res, `[[`, numeric(1), "qtl_p")
   power <- mean(qtl_p < alpha, na.rm = TRUE)

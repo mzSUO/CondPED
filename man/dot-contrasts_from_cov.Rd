@@ -12,15 +12,11 @@
 \item{trait_names}{Character vector of trait names.}
 }
 \value{
-List with \code{gamma} (\verb{m x (m-1)}, row \code{i} is
-\eqn{\gamma_{i,-i}}), \code{C} (\verb{m x m}, column \code{i} is \eqn{c_i}) and
-\code{conditional_variance} (length \code{m}).
+List with \code{gamma}, \code{C} and \code{conditional_variance}.
 }
 \description{
-Computes, for every trait \code{i}, the projection coefficients
-\eqn{\gamma_{i,-i} = \Sigma_{P,-i,-i}^{-1} \Sigma_{P,-i,i}}, the contrast
-vectors \eqn{c_i = e_i - E_{-i} \gamma_{i,-i}} and the conditional
-variances (Schur complements). All inversions go through
-\code{\link[=.safe_inverse]{.safe_inverse()}}.
+Legacy helper still used by the \code{fit_mt_null()} compatibility
+fields (\code{compute_gamma}). Scheduled for removal when the null-model
+interface is migrated.
 }
 \keyword{internal}
