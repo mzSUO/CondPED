@@ -2,7 +2,7 @@
 % Please edit documentation in R/derive-conditional-contrasts.R
 \name{derive_conditional_contrasts}
 \alias{derive_conditional_contrasts}
-\title{Derive conditional projection contrasts}
+\title{Representation basis: fixed reference covariance for subset analysis}
 \usage{
 derive_conditional_contrasts(
   Sigma_P,
@@ -13,37 +13,36 @@ derive_conditional_contrasts(
 )
 }
 \arguments{
-\item{Sigma_P}{Numeric \verb{m x m} phenotypic covariance matrix.}
+\item{Sigma_P}{Numeric symmetric \verb{m x m} reference covariance matrix
+(typically \code{null_fit$Sigma_P}).}
 
-\item{trait_names}{Character vector of trait names; defaults to
+\item{trait_names}{Unique trait names; defaults to
 \code{colnames(Sigma_P)}.}
 
-\item{inverse_tol}{Relative tolerance forwarded to \code{.safe_inverse()}.}
+\item{inverse_tol}{Eigenvalue tolerance used for the rank, condition
+number and pseudo-inverse diagnostics.}
 
-\item{ridge}{Non-negative ridge added to the diagonal when submatrices
-are ill-conditioned; the used value is recorded.}
+\item{ridge}{Non-negative scalar added to the diagonal only when the
+user explicitly requests it; the default \code{0} never inflates the
+diagonal automatically. The value used is recorded in \code{basis}.}
 
-\item{standardize}{Logical; standardise contrasts to unit conditional
-variance.}
+\item{standardize}{Logical; frozen default \code{FALSE} because the
+conditional representation loss is invariant to nonzero diagonal
+rescalings of the traits. When \code{TRUE}, the covariance is converted
+to a correlation matrix.}
 }
 \value{
-A list with components \code{gamma} (per-trait coefficient lists),
-\code{C} (an \verb{m x m} matrix whose i-th column is the contrast vector
-\eqn{c_i}), \code{conditional_variance} (length \code{m}), \code{diagnostics} (a
-data.frame with columns \code{trait}, \code{rank}, \code{condition_number},
-\code{ridge_used}, \code{orthogonality_error}) and \code{status}, as specified in the
-interface contract.
+An object of class \code{"condped_representation_basis"}: a list
+with components \code{Sigma_P_ref} (the covariance actually used,
+after optional ridge/standardization), \code{trait_names}, \code{basis}
+(list with \code{inverse_tol}, \code{ridge}, \code{standardize}), \code{status} and
+\code{diagnostics} (list with \code{rank}, \code{min_eigenvalue},
+\code{condition_number}, \code{used_pseudoinverse}).
 }
 \description{
-Computes the conditional projection coefficients
-\eqn{\gamma_{i,-i} = \Sigma_{P,-i,-i}^{-1}\Sigma_{P,-i,i}} for every trait
-from the (fitted or true) phenotypic covariance matrix, together with the
-contrast matrix \code{C} and conditional variances. Orthogonality is verified
-on the model-covariance scale, never on empirical sample covariances.
+The public name is kept for package compatibility. In v1.0 this
+function does NOT pre-compute trait contrasts; it validates and
+freezes the fixed reference phenotypic covariance used by every
+subset loss evaluation, together with the numerical settings shared
+by all downstream calls.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
-}
-

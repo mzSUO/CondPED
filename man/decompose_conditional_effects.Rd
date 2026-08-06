@@ -2,55 +2,80 @@
 % Please edit documentation in R/decompose-conditional-effects.R
 \name{decompose_conditional_effects}
 \alias{decompose_conditional_effects}
-\title{Decompose marker effects into conditional deviations}
+\title{Conditional representation loss and exact trait-subset summaries}
 \usage{
 decompose_conditional_effects(
   effects,
   attribution,
   contrasts,
-  gate = TRUE,
-  alpha = 0.05,
-  p_adjust = c("holm", "BH", "none"),
-  se_method = c("plugin", "bootstrap"),
-  bootstrap_result = NULL
+  restrict_to_candidates = TRUE,
+  subset_mode = c("all", "singleton", "custom"),
+  custom_sets = NULL,
+  tolerance = 0.1,
+  sensitivity_tolerance = c(0.05, 0.1, 0.2),
+  max_traits_exact = 10L,
+  return_subset_table = TRUE
 )
 }
 \arguments{
-\item{effects}{Effect estimates returned by \code{\link[=estimate_mt_effects]{estimate_mt_effects()}}.}
+\item{effects}{Locus effects: an \code{\link[=estimate_mt_effects]{estimate_mt_effects()}} result or
+its \code{effects_long} data.frame (columns \code{marker_id}, \code{trait},
+\code{beta}).}
 
-\item{attribution}{Attribution result returned by \code{\link[=attribute_traits]{attribute_traits()}}.}
+\item{attribution}{Candidate trait sets: an \code{\link[=attribute_traits]{attribute_traits()}}
+result (its \code{candidate_sets} or legacy \code{A} component) or a named
+list mapping marker ids to trait vectors.}
 
-\item{contrasts}{Contrast object returned by
-\code{\link[=derive_conditional_contrasts]{derive_conditional_contrasts()}}.}
+\item{contrasts}{A \code{"condped_representation_basis"} object from
+\code{\link[=derive_conditional_contrasts]{derive_conditional_contrasts()}} (or a list with \code{Sigma_P_ref}
+and \code{trait_names}).}
 
-\item{gate}{Logical; when \code{TRUE} conditional tests are computed and
-reported only for traits inside the attributed set of each locus.}
+\item{restrict_to_candidates}{Logical; \code{TRUE} (default, formal mode)
+analyses each locus's candidate trait set; \code{FALSE} uses all
+available traits (oracle/diagnostic only).}
 
-\item{alpha}{Significance level for the conditional tests.}
+\item{subset_mode}{\code{"all"} (enumerate all \code{2^k} subsets),\verb{ }"singleton"\verb{(empty, full, singletons and their complements) or}"custom"\verb{ (}custom_sets` plus the empty and full sets).}
 
-\item{p_adjust}{Adjustment method for the conditional p-values:
-\code{"holm"}, \code{"BH"} or \code{"none"}.}
+\item{custom_sets}{List of trait sets for \code{subset_mode = "custom"}.}
 
-\item{se_method}{Standard error method: \code{"plugin"} (uses
-\eqn{c^\top S c}) or \code{"bootstrap"}.}
+\item{tolerance}{Primary tolerance tau in [0, 1).}
 
-\item{bootstrap_result}{Optional bootstrap result returned by
-\code{\link[=bootstrap_condped]{bootstrap_condped()}}, required when \code{se_method = "bootstrap"}.}
+\item{sensitivity_tolerance}{Additional tolerances for the
+sensitivity path.}
+
+\item{max_traits_exact}{Maximum candidate-set size for exact
+enumeration; larger candidate sets in \code{"all"} mode are reported
+as \code{too_many_traits} and never silently demoted.}
+
+\item{return_subset_table}{Logical; \code{FALSE} drops the (potentially
+large) subset table from the return value.}
 }
 \value{
-A list with components \code{conditional_table} (a data.frame with
-columns \code{marker_id}, \code{trait}, \code{eta}, \code{se}, \code{p_raw}, \code{p_adjusted},
-\code{tested}, \code{deviating}), \code{D} (per-locus deviation sets), \code{status} and
-\code{diagnostics}, as specified in the interface contract.
+A list with components \code{subset_table} (or \code{NULL}),
+\code{minimum_representative_sets}, \code{irreducible_modules},
+\code{tolerance_path}, \code{status} and \code{diagnostics} (with
+\code{max_decomposition_error}, \code{max_monotonicity_violation},
+\code{n_rank_deficient}, \code{n_unstable} and locus counts).
 }
 \description{
-Computes the conditional effects \eqn{\widehat\eta = c^\top
-\widehat\beta} for attributed locus-trait pairs and tests the conditional
-deviation from the projection-implied value.
+The public name is kept for package compatibility; the v1.0 duty of
+this function is "conditional representation loss and trait subset
+summaries". For every locus it evaluates the representation loss of
+candidate representing subsets with the unique Stage-1 loss path
+\code{\link[=.compute_subset_loss]{.compute_subset_loss()}}, and in \code{subset_mode = "all"} extracts
+the minimum representative trait sets and the irreducible trait
+modules at each tolerance. No conditional P-values, no profile or
+partition objects are produced.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+\details{
+Per-locus computation order (frozen): normalise the candidate set
+A, evaluate the full quadratic form, enumerate the subsets, compute
+Gamma/eta/Omega and the three quadratic forms per subset, check the
+decomposition and range, run the full-table monotonicity check
+(\code{"all"} mode only), then extract all minimum representative sets
+and all irreducible modules per tolerance and build the tolerance
+path. Only \code{"all"} yields formal set-valued results; \code{"singleton"}
+is the restricted Simulation-III baseline and \code{"custom"} evaluates
+user-supplied sets (both add the empty and full sets; neither runs
+the global monotonicity check or extraction).
 }
-
