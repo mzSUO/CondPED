@@ -153,11 +153,15 @@ api_formals <- list(
     K = NULL,
     chromosome = NULL,
     alpha_omnibus = 0.05,
-    omnibus_adjust = "BH",
-    attribution_mode = "bb_fdr",
-    q_target = 0.05,
-    conditional_adjust = "holm",
-    pve_correction = "both",
+    omnibus_adjust = c("BH", "bonferroni", "none"),
+    candidate_mode = c("holm_fwer", "all_traits"),
+    alpha_trait = 0.05,
+    subset_mode = c("all", "singleton", "custom"),
+    custom_sets = NULL,
+    tolerance = 0.1,
+    sensitivity_tolerance = c(0.05, 0.1, 0.2),
+    max_traits_exact = 10L,
+    pve = FALSE,
     crossfit = FALSE,
     bootstrap = FALSE,
     control = list(),
@@ -242,7 +246,7 @@ test_that("every stub throws condped_not_implemented", {
   implemented <- c("simulate_condped_data", "fit_mt_null",
                    "scan_mt_omnibus", "estimate_mt_effects",
                    "attribute_traits", "derive_conditional_contrasts",
-                   "decompose_conditional_effects")
+                   "decompose_conditional_effects", "condped")
   ns <- asNamespace("CondPED")
   for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)

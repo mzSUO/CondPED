@@ -2,7 +2,7 @@
 % Please edit documentation in R/condped.R
 \name{condped}
 \alias{condped}
-\title{End-to-end CondPED analysis}
+\title{End-to-end CondPED analysis (v1.0)}
 \usage{
 condped(
   Y,
@@ -11,11 +11,15 @@ condped(
   K = NULL,
   chromosome = NULL,
   alpha_omnibus = 0.05,
-  omnibus_adjust = "BH",
-  attribution_mode = "bb_fdr",
-  q_target = 0.05,
-  conditional_adjust = "holm",
-  pve_correction = "both",
+  omnibus_adjust = c("BH", "bonferroni", "none"),
+  candidate_mode = c("holm_fwer", "all_traits"),
+  alpha_trait = 0.05,
+  subset_mode = c("all", "singleton", "custom"),
+  custom_sets = NULL,
+  tolerance = 0.1,
+  sensitivity_tolerance = c(0.05, 0.1, 0.2),
+  max_traits_exact = 10L,
+  pve = FALSE,
   crossfit = FALSE,
   bootstrap = FALSE,
   control = list(),
@@ -25,56 +29,89 @@ condped(
 \arguments{
 \item{Y}{Numeric \verb{n x m} phenotype matrix (rows are individuals).}
 
-\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when \code{NULL}
-an intercept-only design is used.}
+\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when
+\code{NULL} an intercept-only design is used.}
 
 \item{G}{Numeric \verb{n x p} genotype dosage matrix coded 0/1/2.}
 
 \item{K}{Optional numeric \verb{n x n} genomic relationship matrix; when
-\code{NULL} it is built from \code{G}.}
+\code{NULL} it is built once from \code{G}.}
 
-\item{chromosome}{Optional vector of chromosome labels per marker, used
-for leave-one-chromosome-out scans. The global conditional projection
-coefficients are never redefined by these scans.}
+\item{chromosome}{Optional length-\code{p} marker annotation vector; only
+carried through to \code{settings}, never used to switch null models.}
 
-\item{alpha_omnibus}{First-layer omnibus significance level.}
+\item{alpha_omnibus}{Omnibus significance level.}
 
 \item{omnibus_adjust}{Adjustment method for the omnibus p-values.}
 
-\item{attribution_mode}{Second-layer correction mode passed to
-\code{\link[=attribute_traits]{attribute_traits()}}.}
+\item{candidate_mode}{Candidate-set mode passed to
+\code{\link[=attribute_traits]{attribute_traits()}}: \code{"holm_fwer"} (formal) or \code{"all_traits"}.}
 
-\item{q_target}{Target FDR level for the attribution step.}
+\item{alpha_trait}{Within-locus Holm level.}
 
-\item{conditional_adjust}{Adjustment method for the conditional tests.}
+\item{subset_mode}{Subset evaluation mode passed to
+\code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}.}
 
-\item{pve_correction}{PVE bias correction passed to
-\code{\link[=estimate_locus_pve]{estimate_locus_pve()}}.}
+\item{custom_sets}{Optional list of trait sets for
+\code{subset_mode = "custom"}.}
 
-\item{crossfit}{Logical; run \code{\link[=crossfit_effect_pve]{crossfit_effect_pve()}}.}
+\item{tolerance}{Primary representation-loss tolerance.}
 
-\item{bootstrap}{Logical; run \code{\link[=bootstrap_condped]{bootstrap_condped()}}.}
+\item{sensitivity_tolerance}{Additional tolerances for the
+sensitivity path.}
 
-\item{control}{List of additional control settings passed to sub-modules.}
+\item{max_traits_exact}{Maximum candidate-set size for exact
+enumeration.}
 
-\item{seed}{Random seed.}
+\item{pve, crossfit, bootstrap}{Logical P2 switches; all \code{FALSE} by
+default. The P2 modules are scheduled for a later stage: when set
+to \code{TRUE} a warning is emitted and the field stays \code{NULL}.}
+
+\item{control}{List with optional fields \code{followup_loci},
+\code{locus_unit}, \code{inverse_tol}, \code{qform_tol},
+\code{decomposition_rel_tol}, \code{monotonicity_tol},
+\code{condition_number_warning}, \code{null_control}. Unrecognised fields
+produce a warning.}
+
+\item{seed}{Random seed (recorded; the pipeline itself is
+deterministic given the data).}
 }
 \value{
 An object of class \code{"condped_fit"}: a list with components
-\code{null_global}, \code{null_loco}, \code{omnibus}, \code{effects}, \code{attribution},
-\code{conditional}, \code{pve}, \code{crossfit}, \code{bootstrap}, \code{output_long},
-\code{settings}, \code{status} and \code{diagnostics}, as specified in the interface
-contract.
+\code{null_fit}, \code{omnibus}, \code{effects}, \code{candidate_traits},
+\code{subset_analysis} (list with \code{subset_table},
+\code{minimum_representative_sets}, \code{irreducible_modules},
+\code{tolerance_path}), \code{pve}, \code{crossfit}, \code{bootstrap}, \code{settings},
+\code{status} and \code{diagnostics}.
 }
 \description{
-Runs the full CondPED pipeline: input checks, construction or reading of
-the genomic relationship matrix, global multi-trait null model, omnibus
-scan, effect estimation, trait attribution, conditional-deviation
-decomposition, PVE estimation, and optional cross-fitting and bootstrap.
+The thinnest possible orchestrator: it only calls the existing
+public functions in the frozen order and never re-implements any
+formula. \code{fit_mt_null()} is called exactly once; there is no LOCO
+branch; \code{chromosome} is marker annotation only. When the P2 flags
+are \code{FALSE} (default), the P2 functions are never called and the
+corresponding fields are \code{NULL}.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+\details{
+Frozen pipeline:
+\preformatted{
+validate inputs
+-> construct/read one fixed K
+-> fit_mt_null() exactly once
+-> scan_mt_omnibus()
+-> determine follow-up loci
+-> estimate_mt_effects()
+-> attribute_traits()
+-> derive_conditional_contrasts()
+-> decompose_conditional_effects()
+-> optional P2 modules
 }
 
+Follow-up loci: \code{control$followup_loci} when given (validated
+against the marker ids; the family for layer-1 adjustment then
+consists of these loci), otherwise the loci passing the omnibus
+screen (\code{omnibus_adjust} at \code{alpha_omnibus}). With no follow-up
+loci the function returns a structurally complete empty result with
+status code \code{empty_selection}; \code{omnibus_only} and
+\code{trait_restricted} loci are legal results, not failures.
+}
