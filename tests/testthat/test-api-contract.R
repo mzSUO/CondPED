@@ -80,11 +80,8 @@ api_formals <- list(
     effects = ,
     omnibus_method = c("BH", "bonferroni", "none"),
     alpha_omnibus = 0.05,
-    attribution_mode = c("bb_fdr", "holm_fwer", "none"),
-    q_target = 0.05,
-    alpha_total = 0.05,
-    alpha_split = c(0.025, 0.025),
-    dependence = c("assumed", "empirical"),
+    candidate_mode = c("holm_fwer", "all_traits"),
+    alpha_trait = 0.05,
     return_all = TRUE
   ),
   derive_conditional_contrasts = alist(
