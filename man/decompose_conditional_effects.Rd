@@ -55,7 +55,18 @@ A list with components \code{subset_table} (or \code{NULL}),
 \code{minimum_representative_sets}, \code{irreducible_modules},
 \code{tolerance_path}, \code{status} and \code{diagnostics} (with
 \code{max_decomposition_error}, \code{max_monotonicity_violation},
-\code{n_rank_deficient}, \code{n_unstable} and locus counts).
+\code{n_rank_deficient}, \code{n_unstable} and locus counts). The
+\code{subset_table} carries one row per evaluated subset with the
+columns \code{marker_id}, \code{set_id}, \code{analysis_scope},
+\code{representing_set}/\code{representing_key},
+\code{complement_set}/\code{complement_key}, \code{set_size},
+\code{conditional_effect} (list-column of named numeric vectors
+\eqn{\eta_{R|S} = \beta_R - \Gamma_{R|S}^{\top}\beta_S}; \code{NULL}
+for the empty and full representing sets), \code{full_qform},
+\code{subset_qform}, \code{residual_qform}, \code{representation_loss},
+\code{decomposition_error}, \code{feasible_primary}, \code{rank_Sigma_SS},
+\code{rank_Omega}, \code{condition_Sigma_SS}, \code{condition_Omega},
+\code{used_pseudoinverse} and \code{status}.
 }
 \description{
 The public name is kept for package compatibility; the v1.0 duty of

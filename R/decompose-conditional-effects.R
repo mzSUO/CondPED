@@ -50,7 +50,18 @@
 #'   `minimum_representative_sets`, `irreducible_modules`,
 #'   `tolerance_path`, `status` and `diagnostics` (with
 #'   `max_decomposition_error`, `max_monotonicity_violation`,
-#'   `n_rank_deficient`, `n_unstable` and locus counts).
+#'   `n_rank_deficient`, `n_unstable` and locus counts). The
+#'   `subset_table` carries one row per evaluated subset with the
+#'   columns `marker_id`, `set_id`, `analysis_scope`,
+#'   `representing_set`/`representing_key`,
+#'   `complement_set`/`complement_key`, `set_size`,
+#'   `conditional_effect` (list-column of named numeric vectors
+#'   \eqn{\eta_{R|S} = \beta_R - \Gamma_{R|S}^{\top}\beta_S}; `NULL`
+#'   for the empty and full representing sets), `full_qform`,
+#'   `subset_qform`, `residual_qform`, `representation_loss`,
+#'   `decomposition_error`, `feasible_primary`, `rank_Sigma_SS`,
+#'   `rank_Omega`, `condition_Sigma_SS`, `condition_Omega`,
+#'   `used_pseudoinverse` and `status`.
 #' @export
 decompose_conditional_effects <- function(
   effects,
@@ -129,6 +140,7 @@ decompose_conditional_effects <- function(
     representing_set = I(list()), representing_key = character(),
     complement_set = I(list()), complement_key = character(),
     set_size = integer(),
+    conditional_effect = I(list()),
     full_qform = numeric(), subset_qform = numeric(),
     residual_qform = numeric(), representation_loss = numeric(),
     decomposition_error = numeric(), feasible_primary = logical(),
@@ -225,6 +237,7 @@ decompose_conditional_effects <- function(
         complement_set = I(list(out$complement_set)),
         complement_key = out$complement_key,
         set_size = length(out$representing_set),
+        conditional_effect = I(list(out$eta)),
         full_qform = out$full_qform,
         subset_qform = out$subset_qform,
         residual_qform = out$residual_qform,

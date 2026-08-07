@@ -172,26 +172,34 @@ api_formals <- list(
     metrics = c(
       "type1_omnibus",
       "power_omnibus",
-      "tpr_A",
-      "fdp_A",
-      "esr_A",
-      "jaccard_A",
-      "tpr_D",
-      "fdp_D",
-      "esr_D",
-      "bias_beta",
-      "rmse_beta",
-      "coverage_beta",
-      "bias_eta",
-      "rmse_eta",
-      "coverage_eta",
-      "bias_pve",
-      "rmse_pve",
-      "coverage_pve",
+      "candidate_tpr",
+      "candidate_fdp",
+      "candidate_exact_recovery",
+      "candidate_jaccard",
+      "representative_exact_recovery",
+      "representative_jaccard",
+      "representative_size_bias",
+      "tie_coverage",
+      "irreducible_tpr",
+      "irreducible_fdp",
+      "irreducible_exact_recovery",
+      "irreducible_jaccard",
+      "joint_module_miss_rate",
+      "over_fragmentation_rate",
+      "overall_recovery",
+      "conditional_recovery",
       "runtime"
     ),
     include_unstable = TRUE,
-    group_by = c("experiment", "n", "architecture", "pve", "correlation"),
+    group_by = c(
+      "experiment",
+      "n",
+      "architecture",
+      "locus_pve",
+      "correlation",
+      "target_loss",
+      "tolerance"
+    ),
     conf_level = 0.95
   ),
   run_condped_simulation = alist(
@@ -246,7 +254,8 @@ test_that("every stub throws condped_not_implemented", {
   implemented <- c("simulate_condped_data", "fit_mt_null",
                    "scan_mt_omnibus", "estimate_mt_effects",
                    "attribute_traits", "derive_conditional_contrasts",
-                   "decompose_conditional_effects", "condped")
+                   "decompose_conditional_effects", "condped",
+                   "evaluate_condped_simulation")
   ns <- asNamespace("CondPED")
   for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)

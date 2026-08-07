@@ -38,6 +38,7 @@ test_that("subset_table has 2^k rows per locus and contract columns", {
                    c("marker_id", "set_id", "analysis_scope",
                      "representing_set", "representing_key",
                      "complement_set", "complement_key", "set_size",
+                     "conditional_effect",
                      "full_qform", "subset_qform", "residual_qform",
                      "representation_loss", "decomposition_error",
                      "feasible_primary", "rank_Sigma_SS", "rank_Omega",
@@ -256,4 +257,29 @@ test_that("basis input validation", {
   expect_error(derive_conditional_contrasts(Sigma_toy,
                                             trait_names = c("A", "A", "B")),
                class = "condped_invalid_input")
+})
+
+test_that("conditional_effect carries eta_R|S from the unique loss path", {
+  res <- decompose_conditional_effects(
+    toy_effects(), toy_attribution(), toy_basis(), tolerance = 0.10
+  )
+  tab <- res$subset_table[res$subset_table$marker_id == "M1", ]
+  beta <- c(A = 1.0, B = 0.9, C = 0.5)
+  for (i in seq_len(nrow(tab))) {
+    ref <- CondPED:::.compute_subset_loss(
+      beta, Sigma_toy, tab$representing_set[[i]], trait_names = c("A", "B", "C")
+    )
+    expect_identical(tab$conditional_effect[[i]], ref$eta,
+                     label = tab$representing_key[i])
+  }
+  # hand values for S = {A}: eta_B = 0.9 - 0.9 * 1 = 0, eta_C = 0.5
+  rowA <- tab[tab$representing_key == "A", ]
+  expect_equal(unname(rowA$conditional_effect[[1]]), c(0, 0.5),
+               tolerance = 1e-12)
+  expect_identical(names(rowA$conditional_effect[[1]]), c("B", "C"))
+  # boundary sets have NULL conditional_effect
+  expect_null(tab$conditional_effect[
+    tab$representing_key == "<empty>"][[1L]])
+  expect_null(tab$conditional_effect[
+    tab$representing_key == "A|B|C"][[1L]])
 })

@@ -2,52 +2,102 @@
 % Please edit documentation in R/evaluate-condped-simulation.R
 \name{evaluate_condped_simulation}
 \alias{evaluate_condped_simulation}
-\title{Summarise CondPED simulation results}
+\title{Evaluate CondPED simulation replicates (v1.0)}
 \usage{
 evaluate_condped_simulation(
   files,
-  metrics = c("type1_omnibus", "power_omnibus", "tpr_A", "fdp_A", "esr_A", "jaccard_A",
-    "tpr_D", "fdp_D", "esr_D", "bias_beta", "rmse_beta", "coverage_beta", "bias_eta",
-    "rmse_eta", "coverage_eta", "bias_pve", "rmse_pve", "coverage_pve", "runtime"),
+  metrics = c("type1_omnibus", "power_omnibus", "candidate_tpr", "candidate_fdp",
+    "candidate_exact_recovery", "candidate_jaccard", "representative_exact_recovery",
+    "representative_jaccard", "representative_size_bias", "tie_coverage",
+    "irreducible_tpr", "irreducible_fdp", "irreducible_exact_recovery",
+    "irreducible_jaccard", "joint_module_miss_rate", "over_fragmentation_rate",
+    "overall_recovery", "conditional_recovery", "runtime"),
   include_unstable = TRUE,
-  group_by = c("experiment", "n", "architecture", "pve", "correlation"),
+  group_by = c("experiment", "n", "architecture", "locus_pve", "correlation",
+    "target_loss", "tolerance"),
   conf_level = 0.95
 )
 }
 \arguments{
-\item{files}{Character vector of RDS files produced by
-\code{\link[=run_condped_simulation]{run_condped_simulation()}}.}
+\item{files}{Character vector of RDS file paths, one per replicate.}
 
-\item{metrics}{Character vector of metrics to compute; any subset of
-\code{"type1_omnibus"}, \code{"power_omnibus"}, \code{"tpr_A"}, \code{"fdp_A"}, \code{"esr_A"},
-\code{"jaccard_A"}, \code{"tpr_D"}, \code{"fdp_D"}, \code{"esr_D"}, \code{"bias_beta"},
-\code{"rmse_beta"}, \code{"coverage_beta"}, \code{"bias_eta"}, \code{"rmse_eta"},
-\code{"coverage_eta"}, \code{"bias_pve"}, \code{"rmse_pve"}, \code{"coverage_pve"},
-\code{"runtime"}.}
+\item{metrics}{Metrics to report; defaults to the full frozen list.}
 
-\item{include_unstable}{Logical; include unstable replicates in the
-summary (they are still reported separately, never silently dropped).}
+\item{include_unstable}{Logical; keep replicates whose status code
+is \code{unstable} in the metric summaries (they are always listed in
+\code{failures}).}
 
-\item{group_by}{Character vector of grouping variables for the summary.}
+\item{group_by}{Scenario columns to group summaries by; columns
+absent from the replicate settings are dropped with a warning.}
 
-\item{conf_level}{Confidence level for Monte Carlo intervals.}
+\item{conf_level}{Confidence level for the summary intervals.}
 }
 \value{
-A list with components \code{summary} (data.frame),
-\code{replicate_level} (data.frame), \code{failures} (data.frame),
-\code{monte_carlo_se} (data.frame) and \code{status}, as specified in the
-interface contract.
+A list with components \code{replicate_metrics} (one row per
+evaluated replicate), \code{summary} (grouped means), \code{mcse} (grouped
+Monte Carlo standard errors), \code{failures} (read failures and
+non-ok replicates), \code{settings} and \code{status}.
 }
 \description{
-Aggregates per-replicate simulation outputs into evaluation metrics
-(type-I error, power, set-recovery metrics, bias/RMSE/coverage of
-effects, conditional effects and PVE, and runtime), with Monte Carlo
-standard errors. Failed or unstable replicates are never silently
-dropped.
+Computes per-replicate recovery metrics and grouped summaries with
+Monte Carlo standard errors. All set comparisons use normalised
+trait keys; families are compared as whole sets of keys (never just
+the first solution). The empty-set rules of the frozen contract are
+applied verbatim. No legacy D/profile/persistent metrics exist.
 }
-\section{Status}{
+\details{
+\subsection{Replicate file format}{
 
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
+Each entry of \code{files} is an RDS containing one replicate result:
+\describe{
+\item{truth}{The \code{truth} component of a
+\code{\link[=simulate_condped_data]{simulate_condped_data()}} call.}
+\item{estimates}{A list with \code{causal_marker}, \code{omnibus_summary}
+(data.frame with \code{marker_id} and \code{p_value}), \code{candidate_sets}
+(named list marker -> traits), \code{minimum_representative_sets}
+and \code{irreducible_modules} (data.frames as returned by
+\code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}).}
+\item{settings}{List with the scenario descriptors named in
+\code{group_by} plus \code{tolerance} and \code{alpha_omnibus}.}
+\item{status}{Standard status list.}
+\item{runtime}{Numeric seconds.}
+}
 }
 
+\subsection{Metric definitions (per replicate, primary tolerance)}{
+
+\describe{
+\item{type1_omnibus}{Fraction of non-causal markers with
+\code{p_value <= alpha_omnibus}.}
+\item{power_omnibus}{Indicator that the causal marker passes;
+\code{NA} for the null architecture.}
+\item{candidate_tpr, candidate_fdp, candidate_exact_recovery,
+candidate_jaccard}{TPR / FDP / exact recovery / Jaccard of the
+estimated candidate set against \code{truth$candidate_traits}.}
+\item{representative_exact_recovery, representative_jaccard,
+representative_size_bias, tie_coverage}{Family exact recovery,
+family Jaccard, set-size bias (estimated minus truth minimum
+size) and \code{tie_coverage}: the fraction of truth tied minimum
+sets whose key appears in the estimated family.}
+\item{irreducible_tpr, irreducible_fdp,
+irreducible_exact_recovery, irreducible_jaccard}{TPR / FDP /
+family exact recovery / family Jaccard over module keys.}
+\item{joint_module_miss_rate}{Fraction of truth modules of size
+greater than 1 whose key is not exactly recovered (\code{NA} when
+the truth has no joint module).}
+\item{over_fragmentation_rate}{Fraction of truth joint modules
+for which the estimated family contains two or more strict
+sub-modules (\code{NA} when the truth has no joint module).}
+\item{overall_recovery}{Candidate exact AND representative family
+exact AND module family exact.}
+\item{conditional_recovery}{Representative family exact AND
+module family exact, evaluated only when the candidate set was
+exactly recovered (\code{NA} otherwise).}
+}
+
+Empty-set rules (frozen): truth empty + estimate empty -> exact = 1,
+Jaccard = 1, TPR = NA, FDP = 0; truth non-empty + estimate empty ->
+TPR = 0, FDP = 0, Jaccard = 0, exact = 0; truth empty + estimate
+non-empty -> TPR = NA, FDP = 1, Jaccard = 0, exact = 0.
+}
+}
