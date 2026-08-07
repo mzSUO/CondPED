@@ -4,7 +4,14 @@
 \alias{.propose_effects}
 \title{Propose a population effect vector for one attempt}
 \usage{
-.propose_effects(architecture, m, Sigma_P, targets, target_loss)
+.propose_effects(
+  architecture,
+  m,
+  Sigma_P,
+  targets,
+  target_loss,
+  effect_direction = "default"
+)
 }
 \arguments{
 \item{architecture}{Architecture label.}
@@ -16,6 +23,9 @@
 \item{targets}{Resolved target sets.}
 
 \item{target_loss}{Closed-form target loss r.}
+
+\item{effect_direction}{One of \code{"default"}, \code{"concordant"},
+\code{"discordant"}, \code{"mixed"}.}
 }
 \value{
 List with \code{beta} (length m) and \code{delta}.
@@ -24,5 +34,11 @@ List with \code{beta} (length m) and \code{delta}.
 Representative scenarios use the closed-form construction of
 Methods eqs. (39)-(41); other structural scenarios draw from
 proposal families that the acceptance rule filters.
+}
+\details{
+\code{effect_direction} shapes only the candidate_pair/candidate_dense
+templates: \code{concordant} keeps every effect in the same direction,
+\code{discordant} flips all non-leading effects, \code{mixed} alternates the
+signs (identical to \code{discordant} for a pair).
 }
 \keyword{internal}

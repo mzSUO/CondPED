@@ -28,6 +28,7 @@ api_formals <- list(
       "irreducible_pair",
       "multiple_modules"
     ),
+    effect_direction = c("default", "concordant", "discordant", "mixed"),
     locus_pve = 0.01,
     tolerance = 0.10,
     target_loss = 0.05,

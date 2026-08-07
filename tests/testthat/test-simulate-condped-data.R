@@ -220,3 +220,58 @@ test_that("input validation", {
                                      architecture = "multiple_modules"),
                class = "condped_invalid_input")
 })
+
+test_that("truth subset_table carries conditional_effect like the estimate side", {
+  s <- sim("candidate_dense", seed = 41)
+  tab <- s$truth$subset_table
+  expect_true("conditional_effect" %in% names(tab))
+  expect_identical(names(tab)[match("set_size", names(tab)) + 1L],
+                   "conditional_effect")
+  beta <- s$truth$beta[1, ]
+  A <- s$truth$candidate_traits
+  for (i in seq_len(nrow(tab))) {
+    ref <- CondPED:::.compute_subset_loss(
+      beta[A], s$truth$Sigma_P_total[A, A], tab$representing_set[[i]],
+      trait_names = A
+    )
+    expect_identical(tab$conditional_effect[[i]], ref$eta,
+                     label = tab$representing_key[i])
+  }
+  expect_null(tab$conditional_effect[
+    tab$representing_key == "<empty>"][[1L]])
+})
+
+test_that("effect_direction shapes candidate_pair and candidate_dense", {
+  dir_of <- function(s) {
+    b <- s$truth$beta[1, ]
+    unname(b[b != 0] / b[b != 0][1])
+  }
+  pair_c <- sim("candidate_pair", seed = 42, effect_direction = "concordant")
+  pair_d <- sim("candidate_pair", seed = 42, effect_direction = "discordant")
+  expect_equal(dir_of(pair_c), c(1, 0.8), tolerance = 1e-8)
+  expect_equal(dir_of(pair_d), c(1, -0.8), tolerance = 1e-8)
+  expect_equal(unname(pair_c$truth$beta[1, 3:4]), c(0, 0))
+  expect_equal(unname(pair_d$truth$beta[1, 3:4]), c(0, 0))
+  # same direction family keeps the same candidate set
+  expect_identical(pair_d$truth$candidate_traits, c("Trait1", "Trait2"))
+
+  dense_c <- sim("candidate_dense", seed = 43, effect_direction = "concordant")
+  dense_m <- sim("candidate_dense", seed = 43, effect_direction = "mixed")
+  expect_equal(dir_of(dense_c), c(1, 0.8, 0.6, 0.4), tolerance = 1e-8)
+  expect_equal(dir_of(dense_m), c(1, -0.8, 0.6, -0.4), tolerance = 1e-8)
+  expect_identical(dense_m$truth$candidate_traits, paste0("Trait", 1:4))
+
+  # default preserves the pre-existing templates
+  pair_def <- sim("candidate_pair", seed = 42)
+  expect_equal(dir_of(pair_def), c(1, 1), tolerance = 1e-8)
+})
+
+test_that("effect_direction is rejected for non-candidate architectures", {
+  for (a in c("null", "candidate_single", "representative_singleton",
+              "representative_pair", "representative_full",
+              "irreducible_singleton", "irreducible_pair",
+              "multiple_modules")) {
+    expect_error(sim(a, effect_direction = "discordant"),
+                 class = "condped_invalid_input", label = a)
+  }
+})

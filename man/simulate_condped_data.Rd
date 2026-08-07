@@ -15,6 +15,7 @@ simulate_condped_data(
   architecture = c("null", "candidate_single", "candidate_pair", "candidate_dense",
     "representative_singleton", "representative_pair", "representative_full",
     "irreducible_singleton", "irreducible_pair", "multiple_modules"),
+  effect_direction = c("default", "concordant", "discordant", "mixed"),
   locus_pve = 0.01,
   tolerance = 0.1,
   target_loss = 0.05,
@@ -46,6 +47,13 @@ simulate_condped_data(
 
 \item{architecture}{One of the ten frozen scenarios; see the
 interface contract.}
+
+\item{effect_direction}{Sign pattern of the candidate effect
+template: \code{"concordant"} (all same direction), \code{"discordant"}
+(all non-leading effects flipped), \code{"mixed"} (alternating signs,
+identical to \code{"discordant"} for a pair). Only meaningful for
+\code{candidate_pair} and \code{candidate_dense}; must be \code{"default"} for
+every other architecture.}
 
 \item{locus_pve}{Target mean per-candidate-trait PVE of the causal
 variant.}

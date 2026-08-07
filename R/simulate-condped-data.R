@@ -39,6 +39,12 @@
 #'   `correlation`.
 #' @param architecture One of the ten frozen scenarios; see the
 #'   interface contract.
+#' @param effect_direction Sign pattern of the candidate effect
+#'   template: `"concordant"` (all same direction), `"discordant"`
+#'   (all non-leading effects flipped), `"mixed"` (alternating signs,
+#'   identical to `"discordant"` for a pair). Only meaningful for
+#'   `candidate_pair` and `candidate_dense`; must be `"default"` for
+#'   every other architecture.
 #' @param locus_pve Target mean per-candidate-trait PVE of the causal
 #'   variant.
 #' @param tolerance Primary loss tolerance tau.
@@ -92,6 +98,7 @@ simulate_condped_data <- function(
     "irreducible_pair",
     "multiple_modules"
   ),
+  effect_direction = c("default", "concordant", "discordant", "mixed"),
   locus_pve = 0.01,
   tolerance = 0.10,
   target_loss = 0.05,
@@ -108,6 +115,17 @@ simulate_condped_data <- function(
 ) {
   architecture <- match.arg(architecture)
   correlation <- match.arg(correlation)
+  effect_direction <- match.arg(effect_direction)
+  if (effect_direction != "default" &&
+      !architecture %in% c("candidate_pair", "candidate_dense")) {
+    .stop_invalid_input(
+      paste0(
+        "effect_direction is only meaningful for candidate_pair and ",
+        "candidate_dense; use \"default\" for architecture \"%s\"."
+      ),
+      architecture
+    )
+  }
   .check_count(n, "n", min = 2L)
   .check_count(m, "m", min = 1L)
   .check_count(p, "p", min = 2L)
@@ -219,7 +237,8 @@ simulate_condped_data <- function(
     causal_index <- sample.int(p, 1L)
     v_l <- 2 * maf[causal_index] * (1 - maf[causal_index])
     proposal <- .propose_effects(
-      architecture, m, Sigma_P_total, targets, target_loss
+      architecture, m, Sigma_P_total, targets, target_loss,
+      effect_direction
     )
     beta <- proposal$beta
     delta <- proposal$delta
@@ -329,6 +348,7 @@ simulate_condped_data <- function(
       settings = list(
         n = n, m = m, p = p, maf_range = maf_range, h2 = h2,
         architecture = architecture, locus_pve = locus_pve,
+        effect_direction = effect_direction,
         tolerance = tolerance, target_loss = target_loss,
         target_representative_set = targets$representative_set,
         target_irreducible_modules = targets$irreducible_modules,
@@ -584,15 +604,23 @@ simulate_condped_data <- function(
 #' Methods eqs. (39)-(41); other structural scenarios draw from
 #' proposal families that the acceptance rule filters.
 #'
+#' `effect_direction` shapes only the candidate_pair/candidate_dense
+#' templates: `concordant` keeps every effect in the same direction,
+#' `discordant` flips all non-leading effects, `mixed` alternates the
+#' signs (identical to `discordant` for a pair).
+#'
 #' @param architecture Architecture label.
 #' @param m Number of traits.
 #' @param Sigma_P Population phenotypic covariance (m x m, dimnamed).
 #' @param targets Resolved target sets.
 #' @param target_loss Closed-form target loss r.
+#' @param effect_direction One of `"default"`, `"concordant"`,
+#'   `"discordant"`, `"mixed"`.
 #' @return List with `beta` (length m) and `delta`.
 #' @keywords internal
 .propose_effects <- function(architecture, m, Sigma_P, targets,
-                             target_loss) {
+                             target_loss,
+                             effect_direction = "default") {
   trait_names <- colnames(Sigma_P)
   beta <- numeric(m)
   delta <- NA_real_
@@ -604,10 +632,21 @@ simulate_condped_data <- function(
     },
     candidate_pair = {
       if (m < 2L) .stop_invalid_input("candidate_pair requires m >= 2.")
-      beta[1:2] <- 1
+      beta[1:2] <- switch(effect_direction,
+        default = c(1, 1),
+        concordant = c(1, 0.8),
+        discordant = c(1, -0.8),
+        mixed = c(1, -0.8)     # alternating signs coincide for a pair
+      )
     },
     candidate_dense = {
-      beta <- 1 - 0.2 * seq(0, length.out = m)
+      base <- 1 - 0.2 * seq(0, length.out = m)
+      beta <- switch(effect_direction,
+        default = base,
+        concordant = base,
+        discordant = base * c(1, rep(-1, m - 1L)),
+        mixed = base * rep(c(1, -1), length.out = m)
+      )
     },
     representative_singleton = ,
     representative_pair = {
@@ -712,7 +751,8 @@ simulate_condped_data <- function(
       marker_id = character(), set_id = integer(),
       representing_set = I(list()), representing_key = character(),
       complement_set = I(list()), complement_key = character(),
-      set_size = integer(), full_qform = numeric(),
+      set_size = integer(), conditional_effect = I(list()),
+      full_qform = numeric(),
       subset_qform = numeric(), residual_qform = numeric(),
       representation_loss = numeric(), feasible_primary = logical(),
       status = character(), stringsAsFactors = FALSE
@@ -754,6 +794,7 @@ simulate_condped_data <- function(
       complement_set = I(list(out$complement_set)),
       complement_key = out$complement_key,
       set_size = length(out$representing_set),
+      conditional_effect = I(list(out$eta)),
       full_qform = out$full_qform,
       subset_qform = out$subset_qform,
       residual_qform = out$residual_qform,
