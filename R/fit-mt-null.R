@@ -69,8 +69,10 @@
 #'
 #' @return An object of class `"condped_mt_null"`: a list with components
 #'   \describe{
-#'     \item{Sigma_G, Sigma_E, Sigma_P}{Estimated `m x m` covariance
-#'       matrices (`Sigma_P = Sigma_G + Sigma_E`).}
+#'     \item{Sigma_G, Sigma_E, Sigma_P_ref}{Estimated `m x m` covariance
+#'       matrices. `Sigma_P_ref = Sigma_G + Sigma_E` is the fixed
+#'       reference phenotypic covariance shared by all loci and subset
+#'       analyses.}
 #'     \item{fixed_effects}{`q x m` matrix of GLS fixed-effect estimates.}
 #'     \item{gamma}{`m x (m - 1)` matrix of projection coefficients
 #'       (row `i` is \eqn{\gamma_{i,-i}}); `NULL` when
@@ -81,6 +83,9 @@
 #'     \item{logLik}{Maximised restricted log-likelihood.}
 #'     \item{npar}{Number of variance parameters, `m * (m + 1)`.}
 #'     \item{optimizer}{Optimizer actually used.}
+#'     \item{trait_names}{Trait names (from `colnames(Y)` or generated).}
+#'     \item{individual_ids}{Individual ids (from `rownames(Y)` or
+#'       generated).}
 #'     \item{convergence}{List with `code`, `message`, `gradient_norm`,
 #'       `iterations`, `selected_start` and `starts` (a data frame recording
 #'       the objective value, convergence code, legality and selection flag
@@ -91,8 +96,8 @@
 #'       `beta_fixed` (vectorised fixed effects) and `residual_tilde`;
 #'       `NULL` when `return_rotation = FALSE`.}
 #'     \item{diagnostics}{List with `K_rank`, `K_condition`, `K_eigen_sd`,
-#'       `min_eigen_Sigma_G`, `min_eigen_Sigma_E`, `condition_Sigma_P` and
-#'       `identifiable_warning`.}
+#'       `min_eigen_Sigma_G`, `min_eigen_Sigma_E`, `min_eigen_Sigma_P_ref`,
+#'       `condition_Sigma_P_ref` and `identifiable_warning`.}
 #'     \item{status}{Standard CondPED status list.}
 #'   }
 #' @export
@@ -323,7 +328,7 @@ fit_mt_null <- function(
     list(
       Sigma_G = Sigma_G,
       Sigma_E = Sigma_E,
-      Sigma_P = Sigma_P,
+      Sigma_P_ref = Sigma_P,
       fixed_effects = fixed_effects,
       gamma = gamma,
       contrasts = contrasts,
@@ -331,6 +336,12 @@ fit_mt_null <- function(
       logLik = best$logLik,
       npar = m * (m + 1L),
       optimizer = optimizer,
+      trait_names = trait_names,
+      individual_ids = if (!is.null(rownames(Y))) {
+        rownames(Y)
+      } else {
+        paste0("Ind", seq_len(n))
+      },
       convergence = list(
         code = best$code,
         message = best$message,
@@ -359,7 +370,8 @@ fit_mt_null <- function(
         K_eigen_sd = K_eigen_sd,
         min_eigen_Sigma_G = min_eigen_G,
         min_eigen_Sigma_E = min_eigen_E,
-        condition_Sigma_P = condition_P,
+        min_eigen_Sigma_P_ref = min(ev),
+        condition_Sigma_P_ref = condition_P,
         identifiable_warning = identifiable_warning
       ),
       status = status

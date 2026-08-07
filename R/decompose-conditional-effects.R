@@ -423,8 +423,6 @@ decompose_conditional_effects <- function(
     }
     if (!is.null(attribution$candidate_sets)) {
       sets <- attribution$candidate_sets
-    } else if (!is.null(attribution$A)) {
-      sets <- attribution$A   # pre-v1.0 field name
     }
   }
   if (!is.list(sets) || is.null(names(sets)) ||

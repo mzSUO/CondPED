@@ -179,7 +179,7 @@ test_that("K = NULL builds one fixed GRM; supplying the same K matches", {
   K_manual <- CondPED:::.make_grm(Z)
   f_manual <- condped(sim$Y, G = sim$G, K = K_manual, seed = 11L,
                       control = list(null_control = list(maxit = 200L)))
-  expect_equal(f_null$null_fit$Sigma_P, f_manual$null_fit$Sigma_P,
+  expect_equal(f_null$null_fit$Sigma_P_ref, f_manual$null_fit$Sigma_P_ref,
                tolerance = 1e-8)
   expect_equal(f_null$omnibus$omnibus$Q, f_manual$omnibus$omnibus$Q,
                tolerance = 1e-8)

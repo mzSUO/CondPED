@@ -14,7 +14,7 @@ derive_conditional_contrasts(
 }
 \arguments{
 \item{Sigma_P}{Numeric symmetric \verb{m x m} reference covariance matrix
-(typically \code{null_fit$Sigma_P}).}
+(typically \code{null_fit$Sigma_P_ref}).}
 
 \item{trait_names}{Unique trait names; defaults to
 \code{colnames(Sigma_P)}.}

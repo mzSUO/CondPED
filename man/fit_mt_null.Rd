@@ -75,8 +75,10 @@ GLS components).}
 \value{
 An object of class \code{"condped_mt_null"}: a list with components
 \describe{
-\item{Sigma_G, Sigma_E, Sigma_P}{Estimated \verb{m x m} covariance
-matrices (\code{Sigma_P = Sigma_G + Sigma_E}).}
+\item{Sigma_G, Sigma_E, Sigma_P_ref}{Estimated \verb{m x m} covariance
+matrices. \code{Sigma_P_ref = Sigma_G + Sigma_E} is the fixed
+reference phenotypic covariance shared by all loci and subset
+analyses.}
 \item{fixed_effects}{\verb{q x m} matrix of GLS fixed-effect estimates.}
 \item{gamma}{\verb{m x (m - 1)} matrix of projection coefficients
 (row \code{i} is \eqn{\gamma_{i,-i}}); \code{NULL} when
@@ -87,6 +89,9 @@ vector \eqn{c_i}.}
 \item{logLik}{Maximised restricted log-likelihood.}
 \item{npar}{Number of variance parameters, \code{m * (m + 1)}.}
 \item{optimizer}{Optimizer actually used.}
+\item{trait_names}{Trait names (from \code{colnames(Y)} or generated).}
+\item{individual_ids}{Individual ids (from \code{rownames(Y)} or
+generated).}
 \item{convergence}{List with \code{code}, \code{message}, \code{gradient_norm},
 \code{iterations}, \code{selected_start} and \code{starts} (a data frame recording
 the objective value, convergence code, legality and selection flag
@@ -97,8 +102,8 @@ covariances), \code{logdet_Vj}, \code{XtVinvX}, \code{XtVinvX_inv},
 \code{beta_fixed} (vectorised fixed effects) and \code{residual_tilde};
 \code{NULL} when \code{return_rotation = FALSE}.}
 \item{diagnostics}{List with \code{K_rank}, \code{K_condition}, \code{K_eigen_sd},
-\code{min_eigen_Sigma_G}, \code{min_eigen_Sigma_E}, \code{condition_Sigma_P} and
-\code{identifiable_warning}.}
+\code{min_eigen_Sigma_G}, \code{min_eigen_Sigma_E}, \code{min_eigen_Sigma_P_ref},
+\code{condition_Sigma_P_ref} and \code{identifiable_warning}.}
 \item{status}{Standard CondPED status list.}
 }
 }

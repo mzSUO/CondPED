@@ -7,7 +7,7 @@
 #' by all downstream calls.
 #'
 #' @param Sigma_P Numeric symmetric `m x m` reference covariance matrix
-#'   (typically `null_fit$Sigma_P`).
+#'   (typically `null_fit$Sigma_P_ref`).
 #' @param trait_names Unique trait names; defaults to
 #'   `colnames(Sigma_P)`.
 #' @param inverse_tol Eigenvalue tolerance used for the rank, condition

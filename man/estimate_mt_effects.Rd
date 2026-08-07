@@ -34,8 +34,13 @@ covariance matrices.}
 \value{
 A list with components \code{effects_long} (a data.frame with columns
 \code{marker_id}, \code{trait}, \code{beta}, \code{se}, \code{z}, \code{p_value}), \code{beta} (an
-n_loci x m matrix), \code{covariance} (an m x m x n_loci array), \code{status}
-and \code{diagnostics}, as specified in the interface contract.
+n_loci x m matrix with marker and trait dimnames), \code{covariance} (an
+m x m x n_loci array), \code{se} (an n_loci x m matrix),
+\code{genotype_variance} (named numeric vector of per-locus variances of
+the non-missing centred genotypes), \code{locus_table} (a data.frame with
+\code{marker_id}, \code{maf}, \code{genotype_variance}, \code{rank_J}, \code{condition_J},
+\code{status}), \code{trait_names}, \code{status} and \code{diagnostics}, as specified
+in the interface contract.
 }
 \description{
 Estimates the multi-trait effects of selected loci by generalised least

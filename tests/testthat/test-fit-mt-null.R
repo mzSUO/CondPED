@@ -134,7 +134,7 @@ test_that("m = 1 degenerates to the univariate linear mixed model", {
                      control = list(maxit = 300))
   expect_s3_class(fit, "condped_mt_null")
   expect_equal(dim(fit$gamma), c(1L, 0L))
-  expect_equal(fit$Sigma_P, fit$Sigma_G + fit$Sigma_E)
+  expect_equal(fit$Sigma_P_ref, fit$Sigma_G + fit$Sigma_E)
 })
 
 # ---- full fit ----------------------------------------------------------------
@@ -147,10 +147,10 @@ test_that("fit_mt_null returns positive-definite covariances and valid output", 
   expect_s3_class(fit, "condped_mt_null")
   expect_true(all(diag(fit$Sigma_G) > 0))
   expect_true(all(diag(fit$Sigma_E) > 0))
-  for (S in list(fit$Sigma_G, fit$Sigma_E, fit$Sigma_P)) {
+  for (S in list(fit$Sigma_G, fit$Sigma_E, fit$Sigma_P_ref)) {
     expect_true(all(eigen(S, symmetric = TRUE, only.values = TRUE)$values > 0))
   }
-  expect_equal(fit$Sigma_P, fit$Sigma_G + fit$Sigma_E)
+  expect_equal(fit$Sigma_P_ref, fit$Sigma_G + fit$Sigma_E)
   expect_equal(dim(fit$fixed_effects), c(1L, 3L))
   expect_equal(dim(fit$gamma), c(3L, 2L))
   expect_equal(dim(fit$contrasts), c(3L, 3L))
@@ -258,7 +258,7 @@ test_that("gamma satisfies the orthogonality identity on the fitted Sigma_P", {
                                architecture = "null", seed = 61)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                      control = list(maxit = 300))
-  SP <- fit$Sigma_P
+  SP <- fit$Sigma_P_ref
   for (i in seq_len(3L)) {
     lhs <- SP[-i, -i] %*% fit$gamma[i, ]
     expect_equal(drop(lhs), SP[-i, i], tolerance = 1e-8)
@@ -364,4 +364,17 @@ test_that("invalid inputs raise condped_invalid_input errors", {
   K_npd[, 1] <- 10
   diag(K_npd)[1] <- 1
   expect_error(fit_mt_null(Y, K = K_npd), class = "condped_invalid_input")
+})
+
+test_that("v1.0 interface fields: Sigma_P_ref, trait_names, individual_ids", {
+  sim <- simulate_condped_data(n = 60, m = 3, p = 100,
+                               architecture = "null", seed = 77)
+  fit <- fit_mt_null(sim$Y, K = sim$K_bg,
+                     control = list(maxit = 100))
+  expect_equal(fit$Sigma_P_ref, fit$Sigma_G + fit$Sigma_E)
+  expect_null(fit[["Sigma_P"]])   # old field name retired (exact match)
+  expect_identical(fit$trait_names, colnames(sim$Y))
+  expect_identical(fit$individual_ids, rownames(sim$Y))
+  expect_true(is.finite(fit$diagnostics$min_eigen_Sigma_P_ref))
+  expect_true(is.finite(fit$diagnostics$condition_Sigma_P_ref))
 })

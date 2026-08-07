@@ -18,8 +18,13 @@
 #'
 #' @return A list with components `effects_long` (a data.frame with columns
 #'   `marker_id`, `trait`, `beta`, `se`, `z`, `p_value`), `beta` (an
-#'   n_loci x m matrix), `covariance` (an m x m x n_loci array), `status`
-#'   and `diagnostics`, as specified in the interface contract.
+#'   n_loci x m matrix with marker and trait dimnames), `covariance` (an
+#'   m x m x n_loci array), `se` (an n_loci x m matrix),
+#'   `genotype_variance` (named numeric vector of per-locus variances of
+#'   the non-missing centred genotypes), `locus_table` (a data.frame with
+#'   `marker_id`, `maf`, `genotype_variance`, `rank_J`, `condition_J`,
+#'   `status`), `trait_names`, `status` and `diagnostics`, as specified
+#'   in the interface contract.
 #' @export
 estimate_mt_effects <- function(
     null_fit,
@@ -79,17 +84,23 @@ estimate_mt_effects <- function(
   B_arr <- A_arr <- rot$Vinv
   AM_arr <- .precompute_AM(rot)
   Ar <- .precompute_Ar(rot)
-  trait_names <- colnames(null_fit$Sigma_P)
+  trait_names <- colnames(null_fit$Sigma_P_ref)
   G_inv <- rot$XtVinvX_inv
 
   effects_list <- vector("list", n_loci)
   n_rank_deficient <- 0L
+  locus_rows <- vector("list", n_loci)
+  gv <- numeric(n_loci)
 
   for (i in seq_len(n_loci)) {
     idx <- loci_idx[i]
     x <- G[, idx]
-    # Mean-dosage imputation for the score (contract: MAF/n_eff use the
-    # original non-missing samples; the score uses imputed dosages).
+    # Marker summaries use the original (unimputed) dosages; the score
+    # uses mean-dosage imputation.
+    n_eff <- sum(!is.na(x))
+    allele_freq <- if (n_eff > 0L) mean(x, na.rm = TRUE) / 2 else NA_real_
+    maf_l <- if (is.finite(allele_freq)) min(allele_freq, 1 - allele_freq) else NA_real_
+    gv[i] <- if (n_eff > 1L) stats::var(x, na.rm = TRUE) else NA_real_
     if (anyNA(x)) {
       x[is.na(x)] <- mean(x, na.rm = TRUE)
     }
@@ -97,6 +108,16 @@ estimate_mt_effects <- function(
     block <- .gls_block_components(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol)
 
     if (block$rank < m) n_rank_deficient <- n_rank_deficient + 1L
+
+    locus_rows[[i]] <- data.frame(
+      marker_id = marker_ids[idx],
+      maf = maf_l,
+      genotype_variance = gv[i],
+      rank_J = as.integer(block$rank),
+      condition_J = block$condition,
+      status = if (block$rank < m) "rank_deficient" else "ok",
+      stringsAsFactors = FALSE
+    )
 
     effects_list[[i]] <- .format_one_effect(
       marker_id = marker_ids[idx],
@@ -108,11 +129,21 @@ estimate_mt_effects <- function(
   }
 
   combined <- .combine_effects(effects_list)
+  locus_ids <- marker_ids[loci_idx]
+  dimnames(combined$beta) <- list(locus_ids, trait_names)
+  se_mat <- matrix(combined$effects_long$se, nrow = n_loci, byrow = TRUE,
+                   dimnames = list(locus_ids, trait_names))
+  locus_table <- do.call(rbind, locus_rows)
+  rownames(locus_table) <- NULL
 
   out <- list(
     effects_long = combined$effects_long,
     beta = combined$beta,
     covariance = if (isTRUE(return_covariance)) combined$covariance else NULL,
+    se = se_mat,
+    genotype_variance = stats::setNames(gv, locus_ids),
+    locus_table = locus_table,
+    trait_names = trait_names,
     status = .new_status(ok = TRUE, code = "ok", message = "",
                          warnings = character()),
     diagnostics = list(

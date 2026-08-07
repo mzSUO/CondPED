@@ -279,3 +279,17 @@ test_that("return_score and return_effects control optional outputs", {
   expect_type(s1$score[[1]], "double")
   expect_equal(length(s2$effects$beta), 6L)
 })
+
+test_that("omnibus table carries genotype_variance from non-missing dosages", {
+  fit <- make_small_null(n = 24, m = 2, seed = 61)
+  n <- nrow(fit$rotation$Y_tilde)
+  set.seed(62)
+  G <- matrix(stats::rbinom(n * 3, 2, 0.3), ncol = 3)
+  colnames(G) <- paste0("snp", 1:3)
+  G[1, 1] <- NA   # partial missing: variance over observed samples only
+  scan <- scan_mt_omnibus(fit, G)
+  expect_true("genotype_variance" %in% names(scan$omnibus))
+  expect_equal(scan$omnibus$genotype_variance[1], stats::var(G[-1, 1]))
+  expect_equal(scan$omnibus$genotype_variance[2:3],
+               unname(apply(G[, 2:3], 2, stats::var)))
+})

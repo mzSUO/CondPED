@@ -217,7 +217,7 @@ condped <- function(
                              alpha_omnibus = alpha_omnibus,
                              candidate_mode = candidate_mode,
                              alpha_trait = alpha_trait)
-    basis <- derive_conditional_contrasts(fit$Sigma_P)
+    basis <- derive_conditional_contrasts(fit$Sigma_P_ref)
     dec <- decompose_conditional_effects(
       est, attr, basis,
       restrict_to_candidates = TRUE,
@@ -241,7 +241,7 @@ condped <- function(
                              alpha_omnibus = alpha_omnibus,
                              candidate_mode = candidate_mode,
                              alpha_trait = alpha_trait)
-    basis <- derive_conditional_contrasts(fit$Sigma_P)
+    basis <- derive_conditional_contrasts(fit$Sigma_P_ref)
     dec <- decompose_conditional_effects(
       empty_long, attr, basis,
       restrict_to_candidates = TRUE,

@@ -135,6 +135,11 @@ scan_mt_omnibus <- function(
       filter_reason <- ""
       passed <- TRUE
       maf <- NA_real_
+      genotype_variance <- if (n_eff > 1L) {
+        stats::var(x, na.rm = TRUE)
+      } else {
+        NA_real_
+      }
       if (n_eff == 0L) {
         passed <- FALSE
         filter_reason <- "all_missing"
@@ -155,6 +160,7 @@ scan_mt_omnibus <- function(
         omnibus[[idx[s]]] <- data.frame(
           marker_id = marker_id,
           maf = maf,
+          genotype_variance = genotype_variance,
           n_eff = n_eff,
           Q = NA_real_,
           df = 0L,
@@ -169,7 +175,7 @@ scan_mt_omnibus <- function(
         if (isTRUE(return_effects)) {
           effects_list[[idx[s]]] <- .format_one_effect(
             marker_id, beta = rep(NA_real_, m), J_inv = diag(NA_real_, m),
-            rank = 0L, trait_names = colnames(null_fit$Sigma_P)
+            rank = 0L, trait_names = colnames(null_fit$Sigma_P_ref)
           )
         }
         next
@@ -213,6 +219,7 @@ scan_mt_omnibus <- function(
       omnibus[[idx[s]]] <- data.frame(
         marker_id = marker_id,
         maf = maf,
+        genotype_variance = genotype_variance,
         n_eff = n_eff,
         Q = Q,
         df = as.integer(df),
@@ -227,7 +234,7 @@ scan_mt_omnibus <- function(
       if (isTRUE(return_effects)) {
         effects_list[[idx[s]]] <- .format_one_effect(
           marker_id, beta = block$beta, J_inv = block$J_inv,
-          rank = block$rank, trait_names = colnames(null_fit$Sigma_P)
+          rank = block$rank, trait_names = colnames(null_fit$Sigma_P_ref)
         )
       }
     }
@@ -382,7 +389,7 @@ scan_mt_omnibus <- function(
       "null_fit did not converge (status$ok = FALSE); cannot proceed."
     )
   }
-  req <- c("Sigma_G", "Sigma_E", "Sigma_P", "fixed_effects", "rotation",
+  req <- c("Sigma_G", "Sigma_E", "Sigma_P_ref", "fixed_effects", "rotation",
            "diagnostics", "status")
   missing <- setdiff(req, names(null_fit))
   if (length(missing) > 0L) {
@@ -439,6 +446,12 @@ scan_mt_omnibus <- function(
   rownames(effects_long) <- NULL
   beta <- do.call(rbind, lapply(effects_list, `[[`, "beta"))
   if (!is.matrix(beta)) beta <- matrix(beta, nrow = 1L)
+  # Stable ID contract: rows are marker ids, columns trait names.
+  dimnames(beta) <- list(
+    vapply(effects_list, function(e) e$effects_long$marker_id[1L],
+           character(1)),
+    as.character(effects_list[[1L]]$effects_long$trait)
+  )
   covariance <- simplify2array(lapply(effects_list, `[[`, "covariance"))
   list(
     effects_long = effects_long,

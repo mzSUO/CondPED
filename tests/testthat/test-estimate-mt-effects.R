@@ -29,7 +29,7 @@ test_that("beta = J^+ U and covariance = J^+", {
     block <- CondPED:::.gls_block_components(
       x_tilde, AM_arr, Ar, A_arr, fit$rotation$XtVinvX_inv,
       sqrt(.Machine$double.eps))
-    expect_equal(est$beta[i, ], block$beta, tolerance = 1e-10)
+    expect_equal(unname(est$beta[i, ]), block$beta, tolerance = 1e-10)
     expect_equal(est$covariance[, , i], block$J_inv, tolerance = 1e-10)
   }
 })
@@ -71,4 +71,31 @@ test_that("effect dimensions match contract", {
   expect_equal(nrow(est$effects_long), 12L)
   expect_named(est$effects_long, c("marker_id", "trait", "beta", "se", "z",
                                    "p_value"))
+})
+
+test_that("v1.0 interface fields: se, genotype_variance, locus_table, trait_names", {
+  fit <- make_small_null(n = 20, m = 4, seed = 51)
+  set.seed(52)
+  G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 3, 2, 0.3), ncol = 3)
+  colnames(G) <- paste0("snp", 1:3)
+  est <- estimate_mt_effects(fit, G, loci = 1:3)
+  # se equals sqrt(diag(covariance)) and matches effects_long
+  expect_equal(unname(est$se[2, ]), sqrt(diag(est$covariance[, , 2])),
+               tolerance = 1e-12)
+  expect_equal(as.vector(t(est$se)), est$effects_long$se)
+  # dimnames lock the ID/order contract
+  expect_identical(rownames(est$beta), paste0("snp", 1:3))
+  expect_identical(colnames(est$beta), est$trait_names)
+  expect_identical(est$trait_names, fit$trait_names)
+  # genotype variance from the raw dosages
+  expect_equal(unname(est$genotype_variance), unname(apply(G, 2, stats::var)))
+  expect_identical(names(est$genotype_variance), paste0("snp", 1:3))
+  # locus_table columns and values
+  expect_identical(names(est$locus_table),
+                   c("marker_id", "maf", "genotype_variance", "rank_J",
+                     "condition_J", "status"))
+  expect_identical(est$locus_table$marker_id, paste0("snp", 1:3))
+  expect_equal(est$locus_table$genotype_variance,
+               unname(est$genotype_variance))
+  expect_true(all(est$locus_table$status == "ok"))
 })
