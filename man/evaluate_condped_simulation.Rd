@@ -6,12 +6,18 @@
 \usage{
 evaluate_condped_simulation(
   files,
-  metrics = c("type1_omnibus", "power_omnibus", "candidate_tpr", "candidate_fdp",
-    "candidate_exact_recovery", "candidate_jaccard", "representative_exact_recovery",
-    "representative_jaccard", "representative_size_bias", "tie_coverage",
-    "irreducible_tpr", "irreducible_fdp", "irreducible_exact_recovery",
-    "irreducible_jaccard", "joint_module_miss_rate", "over_fragmentation_rate",
-    "overall_recovery", "conditional_recovery", "runtime"),
+  metrics = c("type1_omnibus", "power_omnibus", "beta_bias", "beta_rmse",
+    "beta_coverage", "beta_sign_accuracy", "candidate_tpr", "candidate_fdp",
+    "candidate_exact_recovery", "candidate_jaccard", "conditional_effect_bias",
+    "conditional_effect_rmse", "conditional_effect_sign_accuracy",
+    "representation_loss_bias", "representation_loss_rmse", "representation_loss_mae",
+    "representation_threshold_accuracy", "representation_map_mae",
+    "representative_exact_recovery", "representative_jaccard",
+    "representative_size_bias",
+     "tie_coverage", "irreducible_tpr",
+    "irreducible_fdp", "irreducible_exact_recovery", "irreducible_jaccard",
+    "joint_module_miss_rate", "over_fragmentation_rate", "overall_recovery",
+    "conditional_recovery", "runtime"),
   include_unstable = TRUE,
   group_by = c("experiment", "n", "architecture", "locus_pve", "correlation",
     "target_loss", "tolerance"),
@@ -56,12 +62,19 @@ Each entry of \code{files} is an RDS containing one replicate result:
 (data.frame with \code{marker_id} and \code{p_value}), \code{candidate_sets}
 (named list marker -> traits), \code{minimum_representative_sets}
 and \code{irreducible_modules} (data.frames as returned by
-\code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}).}
+\code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}). Optional for the
+quantitative metrics: \code{beta} and \code{se} (named vectors or
+one-row matrices of estimated effects and standard errors at
+the causal marker) and \code{subset_table} (with
+\code{conditional_effect}).}
 \item{settings}{List with the scenario descriptors named in
 \code{group_by} plus \code{tolerance} and \code{alpha_omnibus}.}
 \item{status}{Standard status list.}
 \item{runtime}{Numeric seconds.}
 }
+
+Rep metrics are the PRIMARY set-level summary; Irr metrics are the
+secondary set-level summary (recorded in \code{settings$metric_levels}).
 }
 
 \subsection{Metric definitions (per replicate, primary tolerance)}{
@@ -71,9 +84,26 @@ and \code{irreducible_modules} (data.frames as returned by
 \code{p_value <= alpha_omnibus}.}
 \item{power_omnibus}{Indicator that the causal marker passes;
 \code{NA} for the null architecture.}
+\item{beta_bias, beta_rmse, beta_coverage,
+beta_sign_accuracy}{Signed mean error, RMSE, 95\% interval
+coverage (only when \code{se} is supplied) and sign accuracy (over
+traits with nonzero true effect) of the causal-marker effect
+vector.}
 \item{candidate_tpr, candidate_fdp, candidate_exact_recovery,
 candidate_jaccard}{TPR / FDP / exact recovery / Jaccard of the
 estimated candidate set against \code{truth$candidate_traits}.}
+\item{conditional_effect_bias, conditional_effect_rmse,
+conditional_effect_sign_accuracy}{Elementwise bias, RMSE and
+sign accuracy (over elements with nonzero true eta) of the
+conditional effects eta over subset-table rows matched by
+\code{representing_key} (elements aligned by complement trait name).}
+\item{representation_loss_bias, representation_loss_rmse,
+representation_loss_mae, representation_threshold_accuracy,
+representation_map_mae}{Bias, RMSE and MAE of the
+representation loss over matched subset rows; the fraction of
+rows whose feasibility side (loss <= tolerance) matches the
+truth; and the per-locus mean absolute error over the subset
+map (equal to the row-wise MAE for single-signal replicates).}
 \item{representative_exact_recovery, representative_jaccard,
 representative_size_bias, tie_coverage}{Family exact recovery,
 family Jaccard, set-size bias (estimated minus truth minimum

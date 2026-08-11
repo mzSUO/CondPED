@@ -17,12 +17,19 @@
 #'     (data.frame with `marker_id` and `p_value`), `candidate_sets`
 #'     (named list marker -> traits), `minimum_representative_sets`
 #'     and `irreducible_modules` (data.frames as returned by
-#'     [decompose_conditional_effects()]).}
+#'     [decompose_conditional_effects()]). Optional for the
+#'     quantitative metrics: `beta` and `se` (named vectors or
+#'     one-row matrices of estimated effects and standard errors at
+#'     the causal marker) and `subset_table` (with
+#'     `conditional_effect`).}
 #'   \item{settings}{List with the scenario descriptors named in
 #'     `group_by` plus `tolerance` and `alpha_omnibus`.}
 #'   \item{status}{Standard status list.}
 #'   \item{runtime}{Numeric seconds.}
 #' }
+#'
+#' Rep metrics are the PRIMARY set-level summary; Irr metrics are the
+#' secondary set-level summary (recorded in `settings$metric_levels`).
 #'
 #' ## Metric definitions (per replicate, primary tolerance)
 #'
@@ -31,9 +38,26 @@
 #'     `p_value <= alpha_omnibus`.}
 #'   \item{power_omnibus}{Indicator that the causal marker passes;
 #'     `NA` for the null architecture.}
+#'   \item{beta_bias, beta_rmse, beta_coverage,
+#'     beta_sign_accuracy}{Signed mean error, RMSE, 95% interval
+#'     coverage (only when `se` is supplied) and sign accuracy (over
+#'     traits with nonzero true effect) of the causal-marker effect
+#'     vector.}
 #'   \item{candidate_tpr, candidate_fdp, candidate_exact_recovery,
 #'     candidate_jaccard}{TPR / FDP / exact recovery / Jaccard of the
 #'     estimated candidate set against `truth$candidate_traits`.}
+#'   \item{conditional_effect_bias, conditional_effect_rmse,
+#'     conditional_effect_sign_accuracy}{Elementwise bias, RMSE and
+#'     sign accuracy (over elements with nonzero true eta) of the
+#'     conditional effects eta over subset-table rows matched by
+#'     `representing_key` (elements aligned by complement trait name).}
+#'   \item{representation_loss_bias, representation_loss_rmse,
+#'     representation_loss_mae, representation_threshold_accuracy,
+#'     representation_map_mae}{Bias, RMSE and MAE of the
+#'     representation loss over matched subset rows; the fraction of
+#'     rows whose feasibility side (loss <= tolerance) matches the
+#'     truth; and the per-locus mean absolute error over the subset
+#'     map (equal to the row-wise MAE for single-signal replicates).}
 #'   \item{representative_exact_recovery, representative_jaccard,
 #'     representative_size_bias, tie_coverage}{Family exact recovery,
 #'     family Jaccard, set-size bias (estimated minus truth minimum
@@ -79,10 +103,22 @@ evaluate_condped_simulation <- function(
   metrics = c(
     "type1_omnibus",
     "power_omnibus",
+    "beta_bias",
+    "beta_rmse",
+    "beta_coverage",
+    "beta_sign_accuracy",
     "candidate_tpr",
     "candidate_fdp",
     "candidate_exact_recovery",
     "candidate_jaccard",
+    "conditional_effect_bias",
+    "conditional_effect_rmse",
+    "conditional_effect_sign_accuracy",
+    "representation_loss_bias",
+    "representation_loss_rmse",
+    "representation_loss_mae",
+    "representation_threshold_accuracy",
+    "representation_map_mae",
     "representative_exact_recovery",
     "representative_jaccard",
     "representative_size_bias",
@@ -111,8 +147,13 @@ evaluate_condped_simulation <- function(
 ) {
   metric_all <- c(
     "type1_omnibus", "power_omnibus",
+    "beta_bias", "beta_rmse", "beta_coverage", "beta_sign_accuracy",
     "candidate_tpr", "candidate_fdp", "candidate_exact_recovery",
-    "candidate_jaccard", "representative_exact_recovery",
+    "candidate_jaccard", "conditional_effect_bias",
+    "conditional_effect_rmse", "conditional_effect_sign_accuracy",
+    "representation_loss_bias", "representation_loss_rmse",
+    "representation_loss_mae", "representation_threshold_accuracy",
+    "representation_map_mae", "representative_exact_recovery",
     "representative_jaccard", "representative_size_bias",
     "tie_coverage", "irreducible_tpr", "irreducible_fdp",
     "irreducible_exact_recovery", "irreducible_jaccard",
@@ -228,6 +269,14 @@ evaluate_condped_simulation <- function(
     failures = failures,
     settings = list(
       metrics = metrics,
+      metric_levels = list(
+        primary = c("representative_exact_recovery",
+                    "representative_jaccard",
+                    "representative_size_bias", "tie_coverage"),
+        secondary = c("irreducible_tpr", "irreducible_fdp",
+                      "irreducible_exact_recovery", "irreducible_jaccard",
+                      "joint_module_miss_rate", "over_fragmentation_rate")
+      ),
       include_unstable = include_unstable,
       group_by = group_by,
       conf_level = conf_level,
@@ -291,6 +340,61 @@ evaluate_condped_simulation <- function(
   if (is.null(est_cand)) est_cand <- character()
   cand <- .set_family_metrics(truth$candidate_traits, est_cand)
 
+  # ---- beta (signal-specific, matched by marker) --------------------------------
+  beta_bias <- beta_rmse <- beta_cov <- beta_sign <- NA_real_
+  est_beta <- estimates$beta
+  if (!is.null(est_beta)) {
+    if (is.matrix(est_beta)) est_beta <- est_beta[causal, ]
+    truth_beta <- drop(truth$beta[1L, ])
+    est_beta <- est_beta[names(truth_beta)]
+    d <- est_beta - truth_beta
+    ok <- is.finite(d)
+    if (any(ok)) {
+      beta_bias <- mean(d[ok])
+      beta_rmse <- sqrt(mean(d[ok]^2))
+      nz <- ok & truth_beta != 0
+      if (any(nz)) {
+        beta_sign <- mean(sign(est_beta[nz]) == sign(truth_beta[nz]))
+      }
+    }
+    est_se <- estimates$se
+    if (!is.null(est_se)) {
+      if (is.matrix(est_se)) est_se <- est_se[causal, ]
+      est_se <- est_se[names(truth_beta)]
+      cov_ok <- ok & is.finite(est_se) & est_se > 0
+      if (any(cov_ok)) {
+        beta_cov <- mean(abs(d[cov_ok]) <= 1.96 * est_se[cov_ok])
+      }
+    }
+  }
+
+  # ---- conditional effect eta (matched by representing_key) ----------------------
+  eta_bias <- eta_rmse <- eta_sign <- NA_real_
+  rho_bias <- rho_rmse <- rho_mae <- rho_acc <- map_mae <- NA_real_
+  matched <- .match_subset_maps(truth$subset_table, estimates$subset_table)
+  if (matched$n > 0L) {
+    de <- matched$est_eta - matched$truth_eta
+    if (length(de) > 0L) {
+      eta_bias <- mean(de)
+      eta_rmse <- sqrt(mean(de^2))
+      nz <- matched$truth_eta != 0
+      if (any(nz)) {
+        eta_sign <- mean(sign(matched$est_eta[nz]) ==
+                           sign(matched$truth_eta[nz]))
+      }
+    }
+    dr <- matched$est_loss - matched$truth_loss
+    if (length(dr) > 0L) {
+      rho_bias <- mean(dr)
+      rho_rmse <- sqrt(mean(dr^2))
+      rho_mae <- mean(abs(dr))
+      map_mae <- rho_mae   # single-signal map: per-locus mean == row mean
+      feas_est <- matched$est_loss <= tol + 1e-10
+      feas_true <- matched$truth_loss <= tol + 1e-10
+      rho_acc <- mean(feas_est == feas_true)
+    }
+  }
+
   # ---- representative set family (primary tolerance) ----------------------------
   truth_reps <- .family_keys_at(truth$minimum_representative_sets, tol)
   est_reps <- .family_keys_at(estimates$minimum_representative_sets, tol)
@@ -353,10 +457,22 @@ evaluate_condped_simulation <- function(
   row <- data.frame(
     type1_omnibus = type1,
     power_omnibus = power,
+    beta_bias = beta_bias,
+    beta_rmse = beta_rmse,
+    beta_coverage = beta_cov,
+    beta_sign_accuracy = beta_sign,
     candidate_tpr = cand$tpr,
     candidate_fdp = cand$fdp,
     candidate_exact_recovery = cand$exact,
     candidate_jaccard = cand$jaccard,
+    conditional_effect_bias = eta_bias,
+    conditional_effect_rmse = eta_rmse,
+    conditional_effect_sign_accuracy = eta_sign,
+    representation_loss_bias = rho_bias,
+    representation_loss_rmse = rho_rmse,
+    representation_loss_mae = rho_mae,
+    representation_threshold_accuracy = rho_acc,
+    representation_map_mae = map_mae,
     representative_exact_recovery = rep_fam$exact,
     representative_jaccard = rep_fam$jaccard,
     representative_size_bias = size_bias,
@@ -510,4 +626,45 @@ evaluate_condped_simulation <- function(
     summary = do.call(rbind, sum_rows),
     mcse = do.call(rbind, mcse_rows)
   )
+}
+
+#' Match truth and estimate subset maps for eta/rho metrics
+#'
+#' Rows are matched by `representing_key`; eta elements are aligned by
+#' complement trait names. Only finite values enter the metric pools.
+#'
+#' @param truth_tab,est_tab Subset tables with `representing_key`,
+#'   `conditional_effect` and `representation_loss`.
+#' @return List with `n` (matched rows), `truth_eta`, `est_eta`,
+#'   `truth_loss`, `est_loss` (aligned numeric vectors).
+#' @keywords internal
+.match_subset_maps <- function(truth_tab, est_tab) {
+  out <- list(n = 0L, truth_eta = numeric(), est_eta = numeric(),
+              truth_loss = numeric(), est_loss = numeric())
+  if (is.null(truth_tab) || is.null(est_tab) ||
+      nrow(truth_tab) == 0L || nrow(est_tab) == 0L) {
+    return(out)
+  }
+  keys <- intersect(truth_tab$representing_key,
+                    est_tab$representing_key)
+  out$n <- length(keys)
+  for (k in keys) {
+    rt <- truth_tab[truth_tab$representing_key == k, ][1L, ]
+    re <- est_tab[est_tab$representing_key == k, ][1L, ]
+    tl <- rt$representation_loss
+    el <- re$representation_loss
+    if (is.finite(tl) && is.finite(el)) {
+      out$truth_loss <- c(out$truth_loss, tl)
+      out$est_loss <- c(out$est_loss, el)
+    }
+    et <- rt$conditional_effect[[1L]]
+    ee <- re$conditional_effect[[1L]]
+    if (!is.null(et) && !is.null(ee) && length(et) > 0L) {
+      ee <- ee[names(et)]
+      keep <- is.finite(et) & is.finite(ee)
+      out$truth_eta <- c(out$truth_eta, unname(et[keep]))
+      out$est_eta <- c(out$est_eta, unname(ee[keep]))
+    }
+  }
+  out
 }

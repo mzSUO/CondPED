@@ -245,3 +245,161 @@ test_that("edge behaviours: no evaluable files, group_by fallback", {
   )
   expect_identical(nrow(res2$summary), 1L)
 })
+
+# ---- Stage 6A quantitative metric anchors -----------------------------------
+
+mk_subset_tab <- function(keys, comps, etas, losses) {
+  if (length(keys) == 0L) {
+    return(data.frame(
+      marker_id = character(), representing_key = character(),
+      complement_set = I(list()), conditional_effect = I(list()),
+      representation_loss = numeric(), stringsAsFactors = FALSE
+    ))
+  }
+  data.frame(
+    marker_id = "M1",
+    representing_key = keys,
+    complement_set = I(comps),
+    conditional_effect = I(etas),
+    representation_loss = losses,
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("beta metrics match the hand anchor", {
+  truth <- list(
+    beta = matrix(c(1.0, 0.5), nrow = 1L,
+                  dimnames = list("M1", c("T1", "T2"))),
+    candidate_traits = c("T1", "T2"),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = mk_subset_tab(character(), list(), list(), numeric())
+  )
+  est <- list(
+    causal_marker = "M1",
+    omnibus_summary = NULL,
+    candidate_sets = list(M1 = c("T1", "T2")),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = mk_subset_tab(character(), list(), list(), numeric()),
+    beta = c(T1 = 1.1, T2 = 0.4),
+    se = c(T1 = 0.06, T2 = 0.06)
+  )
+  r <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_equal(r$beta_bias, 0)                    # (0.1 + -0.1) / 2
+  expect_equal(r$beta_rmse, 0.1)                  # sqrt((0.01 + 0.01) / 2)
+  expect_equal(r$beta_coverage, 1)                # 0.1 <= 1.96 * 0.06 twice
+  expect_equal(r$beta_sign_accuracy, 1)
+
+  est$se <- c(T1 = 0.05, T2 = 0.05)
+  r2 <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_equal(r2$beta_coverage, 0)               # 0.1 > 1.96 * 0.05 twice
+  est$se <- NULL
+  r3 <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_true(is.na(r3$beta_coverage))
+})
+
+test_that("eta metrics match the hand anchor", {
+  st_true <- mk_subset_tab(
+    "A", list(c("B", "C")), list(c(B = 0.20, C = -0.10)), 0.08
+  )
+  st_est <- mk_subset_tab(
+    "A", list(c("B", "C")), list(c(B = 0.25, C = -0.08)), 0.11
+  )
+  truth <- list(
+    beta = matrix(1, nrow = 1L, dimnames = list("M1", "A")),
+    candidate_traits = c("A", "B", "C"),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = st_true
+  )
+  est <- list(
+    causal_marker = "M1",
+    omnibus_summary = NULL,
+    candidate_sets = list(M1 = c("A", "B", "C")),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = st_est
+  )
+  r <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_equal(r$conditional_effect_bias, 0.035)          # (0.05 + 0.02)/2
+  expect_equal(r$conditional_effect_rmse, sqrt(0.00145))
+  expect_equal(r$conditional_effect_sign_accuracy, 1)
+})
+
+test_that("rho metrics match the hand anchor, including threshold side", {
+  st_true <- mk_subset_tab(
+    c("A", "A|B"), list(c("B", "C"), character()),
+    list(c(B = 0.2, C = -0.1), NULL), c(0.08, 0.00)
+  )
+  st_est <- mk_subset_tab(
+    c("A", "A|B"), list(c("B", "C"), character()),
+    list(c(B = 0.25, C = -0.08), NULL), c(0.11, 0.00)
+  )
+  truth <- list(
+    beta = matrix(1, nrow = 1L, dimnames = list("M1", "A")),
+    candidate_traits = c("A", "B", "C"),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = st_true
+  )
+  est <- list(
+    causal_marker = "M1",
+    omnibus_summary = NULL,
+    candidate_sets = list(M1 = c("A", "B", "C")),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = st_est
+  )
+  r <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_equal(r$representation_loss_bias, 0.015)   # (0.03 + 0)/2
+  expect_equal(r$representation_loss_rmse, sqrt((0.03^2 + 0) / 2))
+  expect_equal(r$representation_loss_mae, 0.015)
+  expect_equal(r$representation_map_mae, 0.015)
+  # truth side: feasible, feasible; est side: infeasible, feasible -> 1/2
+  expect_equal(r$representation_threshold_accuracy, 0.5)
+})
+
+test_that("eta/rho metrics are NA when nothing matches", {
+  truth <- list(
+    beta = matrix(1, nrow = 1L, dimnames = list("M1", "A")),
+    candidate_traits = "A",
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = mk_subset_tab("A", list("B"), list(c(B = 0.2)), 0.1)
+  )
+  est <- list(
+    causal_marker = "M1",
+    omnibus_summary = NULL,
+    candidate_sets = list(M1 = "A"),
+    minimum_representative_sets = mk_sets_tab(list()),
+    irreducible_modules = mk_sets_tab(list()),
+    subset_table = mk_subset_tab(character(), list(), list(), numeric())
+  )
+  r <- eval_one(truth, est, settings = list(tolerance = 0.10))
+  expect_true(is.na(r$conditional_effect_bias))
+  expect_true(is.na(r$representation_loss_bias))
+  expect_true(is.na(r$representation_threshold_accuracy))
+})
+
+test_that("Rep is marked primary and Irr secondary in settings", {
+  dir <- tempfile(); dir.create(dir)
+  good <- list(
+    truth = mk_truth("T1"),
+    estimates = mk_est("T1"),
+    settings = list(experiment = "sim6a", n = 500,
+                    architecture = "rep_pair", locus_pve = 0.01,
+                    correlation = "block", target_loss = 0.05,
+                    tolerance = 0.10, alpha_omnibus = 0.05),
+    status = list(ok = TRUE, code = "ok"),
+    runtime = 1
+  )
+  saveRDS(good, file.path(dir, "r.rds"))
+  res <- evaluate_condped_simulation(file.path(dir, "r.rds"))
+  expect_true("representative_exact_recovery" %in%
+                res$settings$metric_levels$primary)
+  expect_true("irreducible_tpr" %in%
+                res$settings$metric_levels$secondary)
+  expect_false(any(res$settings$metric_levels$primary %in%
+                     res$settings$metric_levels$secondary))
+})
