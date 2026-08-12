@@ -184,36 +184,15 @@ scan_mt_omnibus <- function(
       n_tested <- n_tested + 1L
       block <- .gls_block_components(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol)
 
-      if (block$rank == 0L) {
+      # Single source for the Q/df/p/status convention: .q_from_block()
+      # (shared with the conditional scan).
+      qs <- .q_from_block(block, m)
+      Q <- qs$Q
+      p_value <- qs$p_value
+      status <- qs$status
+      df <- block$rank
+      if (block$rank < m) {
         n_rank_deficient <- n_rank_deficient + 1L
-        status <- "rank_deficient"
-        Q <- NA_real_
-        df <- 0L
-        p_value <- NA_real_
-      } else {
-        Q_raw <- sum(block$U * (block$J_inv %*% block$U))
-        # Numerical negative tiny values are truncated to zero.
-        neg_tol <- sqrt(.Machine$double.eps) * max(1, abs(Q_raw))
-        if (Q_raw < 0 && Q_raw > -neg_tol) {
-          Q <- 0
-        } else if (Q_raw < 0) {
-          Q <- NA_real_
-          status <- "numerical_error"
-          p_value <- NA_real_
-        } else {
-          Q <- Q_raw
-          status <- "ok"
-        }
-        if (status == "ok" || !is.na(Q)) {
-          df <- block$rank
-          p_value <- stats::pchisq(Q, df = df, lower.tail = FALSE)
-        } else {
-          df <- block$rank
-        }
-        if (block$rank < m) {
-          n_rank_deficient <- n_rank_deficient + 1L
-          if (status == "ok") status <- "rank_deficient"
-        }
       }
 
       omnibus[[idx[s]]] <- data.frame(
