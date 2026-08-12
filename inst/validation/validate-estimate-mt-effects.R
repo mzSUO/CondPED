@@ -54,7 +54,7 @@ for (ai in seq_along(architectures)) {
       if (!isTRUE(fit$status$ok)) {
         return(list(ok = FALSE, status = "fit_failed"))
       }
-      est <- estimate_mt_effects(fit, sim$G, loci = sim$causal_index)
+      est <- estimate_mt_effects(fit, sim$G, targets = sim$causal_index)
       list(ok = TRUE, beta = est$beta[1, ],
            se = est$effects_long$se,
            true = sim$truth$beta[1, ], converged = fit$convergence$code == 0)

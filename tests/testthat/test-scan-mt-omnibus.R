@@ -119,7 +119,7 @@ test_that("effect estimates satisfy beta = J^+ U and covariance = J^+", {
   set.seed(32)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 5, 2, 0.3), ncol = 5)
   scan <- scan_mt_omnibus(fit, G, return_effects = TRUE)
-  est <- estimate_mt_effects(fit, G, loci = 1:5)
+  est <- estimate_mt_effects(fit, G, targets = 1:5)
 
   expect_equal(scan$effects$beta, est$beta, tolerance = 1e-10)
 
@@ -140,7 +140,7 @@ test_that("rank-zero J returns NA and df = 0", {
   fit <- make_small_null(n = 20, m = 2, seed = 41)
   # An all-zero marker has x_tilde = 0, hence J = 0 exactly.
   x <- rep(0, nrow(fit$rotation$Y_tilde))
-  est <- estimate_mt_effects(fit, matrix(x, ncol = 1), loci = 1L)
+  est <- estimate_mt_effects(fit, matrix(x, ncol = 1), targets = 1L)
   expect_true(all(is.na(est$beta)))
   expect_true(all(is.na(est$effects_long$se)))
 
@@ -212,7 +212,7 @@ test_that("scan(return_effects = TRUE) matches estimate_mt_effects", {
   set.seed(62)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 8, 2, 0.3), ncol = 8)
   scan <- scan_mt_omnibus(fit, G, return_effects = TRUE)
-  est <- estimate_mt_effects(fit, G, loci = 1:8)
+  est <- estimate_mt_effects(fit, G, targets = 1:8)
   expect_equal(scan$effects$beta, est$beta, tolerance = 1e-10)
   expect_equal(scan$effects$effects_long, est$effects_long, tolerance = 1e-10)
   expect_equal(scan$effects$covariance, est$covariance, tolerance = 1e-10)
@@ -249,7 +249,7 @@ test_that("invalid null_fit objects raise condped_invalid_input", {
   bad3$rotation <- NULL
   expect_error(scan_mt_omnibus(bad3, G), class = "condped_invalid_input")
 
-  expect_error(estimate_mt_effects(bad1, G, loci = 1),
+  expect_error(estimate_mt_effects(bad1, G, targets = 1),
                class = "condped_invalid_input")
 })
 
@@ -260,7 +260,7 @@ test_that("marker_ids length mismatch is rejected", {
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 3, 2, 0.3), ncol = 3)
   expect_error(scan_mt_omnibus(fit, G, marker_ids = c("a", "b")),
                class = "condped_invalid_input")
-  expect_error(estimate_mt_effects(fit, G, loci = 1:2,
+  expect_error(estimate_mt_effects(fit, G, targets = 1:2,
                                    marker_ids = c("a", "b", "c", "d")),
                class = "condped_invalid_input")
 })

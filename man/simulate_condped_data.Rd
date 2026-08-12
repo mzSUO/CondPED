@@ -127,7 +127,7 @@ construction of Methods eqs. (39)-(41): with
   d^{\top}\Omega^{-1}d = 1,\qquad
   \delta = \sqrt{\frac{r\,\beta_{S*}^{\top}\Sigma_{S*S*}^{-1}\beta_{S*}}
   {1-r}}}
-so that the target set has population loss exactly \code{r = target_loss}.
+so that the target set has population loss exactly r = target_loss.
 All acceptance rules read population beta, Sigma and the truth
 subset table only -- never sample p-values or fitted results.
 }

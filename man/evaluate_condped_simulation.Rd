@@ -13,7 +13,7 @@ evaluate_condped_simulation(
     "representation_loss_bias", "representation_loss_rmse", "representation_loss_mae",
     "representation_threshold_accuracy", "representation_map_mae",
     "representative_exact_recovery", "representative_jaccard",
-    "representative_size_bias",
+    "representative_size_bias", 
      "tie_coverage", "irreducible_tpr",
     "irreducible_fdp", "irreducible_exact_recovery", "irreducible_jaccard",
     "joint_module_miss_rate", "over_fragmentation_rate", "overall_recovery",

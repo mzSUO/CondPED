@@ -2,77 +2,74 @@
 % Please edit documentation in R/attribute-traits.R
 \name{attribute_traits}
 \alias{attribute_traits}
-\title{Candidate trait sets via within-locus Holm testing}
+\title{Candidate trait sets per signal via within-signal Holm testing}
 \usage{
 attribute_traits(
-  omnibus,
   effects,
-  omnibus_method = c("BH", "bonferroni", "none"),
-  alpha_omnibus = 0.05,
-  candidate_mode = c("holm_fwer", "all_traits"),
+  candidate_mode = c("holm_fwer", "all_traits", "predefined"),
   alpha_trait = 0.05,
+  predefined_sets = NULL,
   return_all = TRUE
 )
 }
 \arguments{
-\item{omnibus}{Omnibus scan result returned by \code{\link[=scan_mt_omnibus]{scan_mt_omnibus()}},
-or its \code{omnibus} data.frame (columns \code{marker_id}, \code{p_value}, ...).}
+\item{effects}{Final joint signal effects: a
+\code{\link[=resolve_locus_signals]{resolve_locus_signals()}} result, an \code{\link[=estimate_mt_effects]{estimate_mt_effects()}}
+result, or a data.frame with \code{trait}, \code{beta}, \code{se} and marker or
+signal id columns. SNP-level inputs map each marker to a
+degenerate one-signal locus.}
 
-\item{effects}{Effect estimates returned by \code{\link[=estimate_mt_effects]{estimate_mt_effects()}},
-or its \code{effects_long} data.frame (columns \code{marker_id}, \code{trait},
-\code{beta}, \code{se}, \code{p_value}).}
+\item{candidate_mode}{\code{"holm_fwer"}, \code{"all_traits"} or
+\code{"predefined"}.}
 
-\item{omnibus_method}{Layer-1 adjustment: \code{"BH"}, \code{"bonferroni"} or
-\code{"none"}.}
+\item{alpha_trait}{Within-signal Holm level.}
 
-\item{alpha_omnibus}{Layer-1 omnibus significance level.}
+\item{predefined_sets}{Named list (by \code{signal_id}) of trait vectors
+for \code{candidate_mode = "predefined"}.}
 
-\item{candidate_mode}{\code{"holm_fwer"} (formal within-locus Holm) or
-\code{"all_traits"} (oracle: all traits are candidates).}
-
-\item{alpha_trait}{Within-locus Holm level.}
-
-\item{return_all}{Logical; \code{TRUE} keeps every trait row of the
-selected loci, \code{FALSE} keeps only candidate rows. Never changes
+\item{return_all}{Logical; \code{TRUE} keeps every trait row,
+\code{FALSE} keeps only candidate rows. Never changes
 \code{candidate_sets}.}
 }
 \value{
 A list with components
 \describe{
-\item{selected_loci}{Character vector of layer-1 selected marker
-ids.}
-\item{trait_table}{\code{data.frame} with columns \code{marker_id}, \code{trait},
-\code{beta}, \code{se}, \code{Q}, \code{p_raw}, \code{p_adjusted}, \code{candidate},
-\code{adjust_scope}.}
-\item{candidate_sets}{Named list; per-locus candidate trait sets
-(only loci with at least one candidate trait).}
-\item{locus_table}{\code{data.frame} with columns \code{marker_id},
-\code{n_candidates}, \code{locus_status} (\code{omnibus_only},
-\code{trait_restricted}, \code{multi_trait}).}
+\item{selected_signals}{Character vector of signal ids.}
+\item{trait_table}{data.frame: \code{locus_id}, \code{signal_id},
+\code{representative_snp}, \code{trait}, \code{beta}, \code{se}, \code{Q}, \code{p_raw},
+\code{p_adjusted}, \code{candidate}, \code{effect_sign}, \code{adjust_scope}.}
+\item{candidate_sets}{Named list (by \code{signal_id}) of candidate
+trait sets; only signals with at least one candidate.}
+\item{signal_table}{data.frame: \code{locus_id}, \code{signal_id},
+\code{n_candidates}, \code{effect_breadth}, \code{direction_pattern},
+\code{signal_status}.}
 \item{mode}{The \code{candidate_mode} used.}
 \item{status}{Standard status list.}
-\item{diagnostics}{List with \code{M}, \code{n_selected}, \code{n_candidates},
-locus-status counts and anomaly counts.}
+\item{diagnostics}{List of counts.}
 }
 }
 \description{
-Defines the candidate trait set of each omnibus-selected locus. The
-formal mode applies the Holm procedure to the per-trait Wald
-p-values WITHIN each locus (never pooled across loci); traits
-passing at \code{alpha_trait} form the candidate set
-\eqn{\widehat{\mathcal A}_l}. \code{candidate_mode = "all_traits"} is an
-oracle/sensitivity mode that takes every analysed trait as
-candidate, still restricted to selected loci.
+Defines the candidate trait set of every signal from its FINAL
+joint signal-specific effects. There is no marginal omnibus
+re-gate: secondary signals found by conditional resolution enter
+the Holm step even when they are not marginally significant.
+Formal mode applies the Holm procedure to the per-trait Wald
+p-values WITHIN each signal (never pooled across signals or loci).
 }
 \details{
-Layer 1 selects loci: the \code{M} valid (non-\code{NA}) omnibus p-values are
-adjusted with \code{omnibus_method} and compared against
-\code{alpha_omnibus}. \code{M} counts tested locus families only. Loci not
-passing layer 1 never enter the candidate results.
+Per signal \code{l}, per-trait Wald statistics
+\deqn{Q_{il} = \widehat\beta_{il}^2 / \widehat S_{l,ii}}
+give raw p-values; the candidate set is
+\deqn{\widehat{\mathcal A}_l = \{i: p_{il}^{Holm} \le \alpha_{trait}\}}
+and the effect breadth \eqn{\widehat B_l = |\widehat{\mathcal A}_l|}.
 
-Layer 2 (\code{candidate_mode = "holm_fwer"}): within each selected
-locus, the locus's own per-trait p-values are Holm-adjusted
-(\code{adjust_scope = "within_locus"}) and compared with \code{alpha_trait}.
-Locus status: \code{omnibus_only} (no candidate), \code{trait_restricted}
-(exactly one), \code{multi_trait} (two or more).
+\code{candidate_mode}:
+\describe{
+\item{\code{holm_fwer}}{formal within-signal Holm.}
+\item{\code{all_traits}}{oracle/sensitivity: every analysed trait is a
+candidate. Does NOT act as a trait oracle (use \code{predefined}).}
+\item{\code{predefined}}{simulation trait oracle: candidate sets are
+taken from \code{predefined_sets} (named by \code{signal_id}); every
+signal must have an entry.}
+}
 }

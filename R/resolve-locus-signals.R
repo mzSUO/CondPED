@@ -227,3 +227,219 @@
     )
   )
 }
+
+#' Resolve locus signals and estimate their joint effects
+#'
+#' Orchestrates the locus-level signal resolution: for each locus of a
+#' [define_associated_loci()] result, the lead SNP is the first
+#' representative; the stepwise conditional core
+#' [`.resolve_one_locus_signals()`] selects further representatives;
+#' the final signal-specific effects come from ONE joint GLS refit of
+#' the selected set via [`.fit_joint_signal_effects()`] (the same
+#' path used by [estimate_mt_effects()] with conditioning sets).
+#' Stepwise temporary conditional betas never appear in the output.
+#'
+#' @param null_fit The single global null fit (with rotation).
+#' @param G `n x p` genotype matrix.
+#' @param locus_object A [define_associated_loci()] result (or a list
+#'   with `loci` and `membership` data.frames).
+#' @param marker_ids Marker order of `G`.
+#' @param signal_adjust Local screening rule:
+#'   `"within_locus_bonferroni"`, `"fixed"` or `"none"`.
+#' @param alpha_signal Level for the bonferroni/none rules.
+#' @param fixed_p_threshold Raw-p threshold; required when
+#'   `signal_adjust = "fixed"`.
+#' @param max_signals Maximum signals per locus.
+#' @param rank_tol Tolerance forwarded to [`.safe_inverse()`].
+#' @param return_conditional_scan Logical; keep the per-step
+#'   conditional scan tables.
+#'
+#' @return A list with components
+#' \describe{
+#'   \item{signals}{data.frame, one row per resolved signal:
+#'     `locus_id`, `signal_order`, `representative_snp`,
+#'     `conditioning_key`, `conditional_p_raw`,
+#'     `conditional_p_adjusted`, `screening_rule`, `M_remaining`,
+#'     `selection_status`, `marginal_p`.}
+#'   \item{beta}{Long data.frame: `locus_id`, `signal_order`,
+#'     `representative_snp`, `trait`, `beta`, `se` from the final
+#'     joint model.}
+#'   \item{covariance}{Named list per `locus_id`: the full joint
+#'     `(Km) x (Km)` covariance matrix of that locus's signal effects
+#'     (blocks ordered by `signal_order`).}
+#'   \item{conditional_scan}{Per-locus stepwise scan history, or
+#'     `NULL`.}
+#'   \item{status}{Standard status list.}
+#'   \item{diagnostics}{List with `n_loci`, `n_signals`,
+#'     `stop_reasons`, `n_rank_deficient`.}
+#' }
+#' @export
+resolve_locus_signals <- function(
+  null_fit,
+  G,
+  locus_object,
+  marker_ids = colnames(G),
+  signal_adjust = c("within_locus_bonferroni", "fixed", "none"),
+  alpha_signal = 0.05,
+  fixed_p_threshold = NULL,
+  max_signals = 10L,
+  rank_tol = sqrt(.Machine$double.eps),
+  return_conditional_scan = FALSE
+) {
+  signal_adjust <- match.arg(signal_adjust)
+  .check_prob(alpha_signal, "alpha_signal")
+  if (signal_adjust == "fixed") {
+    if (is.null(fixed_p_threshold)) {
+      .stop_invalid_input(
+        "fixed_p_threshold is required when signal_adjust = \"fixed\"."
+      )
+    }
+    .check_prob(fixed_p_threshold, "fixed_p_threshold")
+  }
+  if (!is.numeric(max_signals) || length(max_signals) != 1L ||
+      !is.finite(max_signals) || max_signals < 1L) {
+    .stop_invalid_input("max_signals must be a positive integer.")
+  }
+  .validate_null_fit(null_fit)
+  if (is.null(null_fit$rotation)) {
+    .stop_invalid_input(
+      "null_fit does not contain the rotation object; re-fit with return_rotation = TRUE."
+    )
+  }
+  if (is.null(marker_ids)) marker_ids <- paste0("M", seq_len(ncol(G)))
+  if (anyDuplicated(marker_ids)) {
+    .stop_invalid_input("marker_ids must be unique.")
+  }
+  if (!is.list(locus_object) || is.null(locus_object$loci) ||
+      is.null(locus_object$membership)) {
+    .stop_invalid_input(
+      "locus_object must provide loci and membership data.frames."
+    )
+  }
+  loci <- locus_object$loci
+  membership <- locus_object$membership
+  need_loci <- c("locus_id", "lead_snp", "lead_p")
+  if (!all(need_loci %in% names(loci))) {
+    .stop_invalid_input("loci must contain locus_id, lead_snp, lead_p.")
+  }
+  if (!all(c("locus_id", "marker_id", "position") %in% names(membership))) {
+    .stop_invalid_input(
+      "membership must contain locus_id, marker_id and position."
+    )
+  }
+  # marker annotation for the deterministic tie-break: chromosome from
+  # the locus table, position from the membership table
+  position <- stats::setNames(membership$position,
+                              membership$marker_id)
+  chr_of_locus <- stats::setNames(as.character(loci$chromosome),
+                                  loci$locus_id)
+  chromosome <- stats::setNames(
+    chr_of_locus[membership$locus_id],
+    membership$marker_id
+  )
+
+  signal_rows <- list()
+  beta_rows <- list()
+  cov_list <- list()
+  scan_hist <- list()
+  stop_reasons <- character()
+  locus_status_rows <- list()
+  n_rank_deficient <- 0L
+
+  for (li in seq_len(nrow(loci))) {
+    lid <- loci$locus_id[li]
+    lead <- loci$lead_snp[li]
+    members <- membership$marker_id[membership$locus_id == lid]
+    res <- .resolve_one_locus_signals(
+      locus_id = lid, lead_snp = lead, members = members,
+      null_fit = null_fit, G = G, marker_ids = marker_ids,
+      chromosome = chromosome, position = position,
+      lead_marginal_p = loci$lead_p[li],
+      screening_rule = signal_adjust,
+      alpha_signal = alpha_signal,
+      fixed_p_threshold = if (!is.null(fixed_p_threshold)) {
+        fixed_p_threshold
+      } else {
+        alpha_signal
+      },
+      max_signals = max_signals, rank_tol = rank_tol,
+      keep_history = TRUE
+    )
+    stop_reasons[lid] <- res$diagnostics$stop_reason
+
+    # final joint refit of the selected representatives
+    joint <- .fit_joint_signal_effects(
+      null_fit, G, res$selected, marker_ids = marker_ids,
+      rank_tol = rank_tol
+    )
+    if (joint$status$code != "ok") {
+      n_rank_deficient <- n_rank_deficient + 1L
+    }
+    cov_list[[lid]] <- joint$joint_covariance
+    locus_status_rows[[li]] <- data.frame(
+      locus_id = lid,
+      stop_reason = res$diagnostics$stop_reason,
+      n_signals = length(res$selected),
+      numerical_status = joint$status$code,
+      stringsAsFactors = FALSE
+    )
+
+    sig <- res$signals
+    sig <- sig[!is.na(sig$representative_snp), , drop = FALSE]
+    signal_rows[[li]] <- sig
+    for (k in seq_along(res$selected)) {
+      beta_rows[[length(beta_rows) + 1L]] <- data.frame(
+        locus_id = lid,
+        signal_id = paste0(lid, "::S", k),
+        signal_order = k,
+        representative_snp = res$selected[k],
+        trait = colnames(joint$beta),
+        beta = joint$beta[k, ],
+        se = joint$se[k, ],
+        stringsAsFactors = FALSE
+      )
+    }
+    if (isTRUE(return_conditional_scan)) scan_hist[[lid]] <- res$history
+  }
+
+  signals_df <- if (length(signal_rows) > 0L) {
+    do.call(rbind, signal_rows)
+  } else {
+    data.frame()
+  }
+  if (nrow(signals_df) > 0L) {
+    signals_df$signal_id <- paste0(signals_df$locus_id, "::S",
+                                   signals_df$signal_order)
+    signals_df <- signals_df[, c("locus_id", "signal_id",
+                                 setdiff(names(signals_df),
+                                         c("locus_id", "signal_id")))]
+  }
+  beta_df <- if (length(beta_rows) > 0L) {
+    do.call(rbind, beta_rows)
+  } else {
+    data.frame()
+  }
+
+  list(
+    signals = signals_df,
+    beta = beta_df,
+    covariance = cov_list,
+    conditional_scan = if (isTRUE(return_conditional_scan)) {
+      scan_hist
+    } else {
+      NULL
+    },
+    status = .new_status(ok = TRUE, code = "ok"),
+    diagnostics = list(
+      n_loci = nrow(loci),
+      n_signals = nrow(signals_df),
+      stop_reasons = stop_reasons,
+      locus_status = if (length(locus_status_rows) > 0L) {
+        do.call(rbind, locus_status_rows)
+      } else {
+        data.frame()
+      },
+      n_rank_deficient = n_rank_deficient
+    )
+  )
+}

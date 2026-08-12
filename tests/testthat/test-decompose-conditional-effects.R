@@ -35,7 +35,8 @@ test_that("subset_table has 2^k rows per locus and contract columns", {
   expect_identical(res$status$code, "ok")
   tab <- res$subset_table
   expect_identical(names(tab),
-                   c("marker_id", "set_id", "analysis_scope",
+                   c("locus_id", "signal_id", "representative_snp",
+                     "marker_id", "set_id", "analysis_scope",
                      "representing_set", "representing_key",
                      "complement_set", "complement_key", "set_size",
                      "conditional_effect",
@@ -44,6 +45,9 @@ test_that("subset_table has 2^k rows per locus and contract columns", {
                      "feasible_primary", "rank_Sigma_SS", "rank_Omega",
                      "condition_Sigma_SS", "condition_Omega",
                      "used_pseudoinverse", "status"))
+  # SNP-level inputs map to degenerate one-signal loci
+  expect_true(all(tab$locus_id == tab$marker_id))
+  expect_true(all(tab$signal_id == paste0(tab$marker_id, "::S1")))
   # M1/M2: 2^3 = 8 rows; M3 is single-candidate: 2 rows, not_applicable
   expect_equal(sum(tab$marker_id == "M1"), 8)
   expect_equal(sum(tab$marker_id == "M2"), 8)

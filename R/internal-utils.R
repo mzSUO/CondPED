@@ -336,3 +336,53 @@
   )
   stop(cond)
 }
+
+#' Check that an argument is a single probability in (0, 1)
+#'
+#' @param x Value to check.
+#' @param name Argument name for the error message.
+#' @keywords internal
+.check_prob <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0 || x >= 1) {
+    .stop_invalid_input("%s must be a single number in (0, 1).", name)
+  }
+  invisible(x)
+}
+
+#' Coerce the omnibus input to a validated data.frame
+#'
+#' Accepts either a [scan_mt_omnibus()] result object or its `omnibus`
+#' data.frame directly.
+#'
+#' @param omnibus Result object or data.frame.
+#' @return data.frame with at least `marker_id` and `p_value`.
+#' @keywords internal
+.as_omnibus_table <- function(omnibus) {
+  if (is.list(omnibus) && !is.data.frame(omnibus)) {
+    if (!is.null(omnibus$status) && isFALSE(omnibus$status$ok)) {
+      .stop_invalid_input(
+        "omnibus result has status$ok == FALSE; refusing to proceed."
+      )
+    }
+    omnibus <- omnibus$omnibus
+  }
+  if (!is.data.frame(omnibus)) {
+    .stop_invalid_input(
+      "omnibus must be a scan_mt_omnibus() result or a data.frame."
+    )
+  }
+  need <- c("marker_id", "p_value")
+  missing_cols <- setdiff(need, names(omnibus))
+  if (length(missing_cols) > 0L) {
+    .stop_invalid_input(
+      "omnibus data.frame is missing column(s): %s.",
+      paste(missing_cols, collapse = ", ")
+    )
+  }
+  if (!is.numeric(omnibus$p_value) ||
+      any(!is.na(omnibus$p_value) & (omnibus$p_value < 0 | omnibus$p_value > 1))) {
+    .stop_invalid_input("omnibus$p_value must be numeric values in [0, 1].")
+  }
+  omnibus$marker_id <- as.character(omnibus$marker_id)
+  omnibus
+}

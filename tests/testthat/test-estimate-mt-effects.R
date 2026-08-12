@@ -19,7 +19,7 @@ test_that("beta = J^+ U and covariance = J^+", {
   fit <- make_small_null(n = 25, m = 3, seed = 11)
   set.seed(12)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 4, 2, 0.3), ncol = 4)
-  est <- estimate_mt_effects(fit, G, loci = 1:4)
+  est <- estimate_mt_effects(fit, G, targets = 1:4)
 
   for (i in seq_len(4)) {
     x_tilde <- crossprod(fit$rotation$U, G[, i])
@@ -39,15 +39,15 @@ test_that("loci can be specified by character marker_id", {
   set.seed(22)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 5, 2, 0.3), ncol = 5)
   colnames(G) <- paste0("snp", 1:5)
-  est_num <- estimate_mt_effects(fit, G, loci = c(1, 3, 5))
-  est_chr <- estimate_mt_effects(fit, G, loci = c("snp1", "snp3", "snp5"))
+  est_num <- estimate_mt_effects(fit, G, targets = c(1, 3, 5))
+  est_chr <- estimate_mt_effects(fit, G, targets = c("snp1", "snp3", "snp5"))
   expect_equal(est_num$beta, est_chr$beta, tolerance = 1e-10)
 })
 
 test_that("return_covariance = FALSE suppresses covariance", {
   fit <- make_small_null(n = 20, m = 2, seed = 31)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 2, 2, 0.3), ncol = 2)
-  est <- estimate_mt_effects(fit, G, loci = 1, return_covariance = FALSE)
+  est <- estimate_mt_effects(fit, G, targets = 1, return_covariance = FALSE)
   expect_null(est$covariance)
 })
 
@@ -55,7 +55,7 @@ test_that("rank-deficient loci produce NA standard errors", {
   fit <- make_small_null(n = 18, m = 2, seed = 41)
   # All-zero genotype -> J = 0 (rank deficient)
   x <- rep(0, nrow(fit$rotation$Y_tilde))
-  est <- estimate_mt_effects(fit, matrix(x, ncol = 1), loci = 1L)
+  est <- estimate_mt_effects(fit, matrix(x, ncol = 1), targets = 1L)
   expect_true(all(is.na(est$beta)))
   expect_true(all(is.na(est$effects_long$se)))
   expect_equal(est$diagnostics$n_rank_deficient, 1L)
@@ -65,7 +65,7 @@ test_that("effect dimensions match contract", {
   fit <- make_small_null(n = 20, m = 4, seed = 51)
   set.seed(52)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 3, 2, 0.3), ncol = 3)
-  est <- estimate_mt_effects(fit, G, loci = 1:3)
+  est <- estimate_mt_effects(fit, G, targets = 1:3)
   expect_equal(dim(est$beta), c(3L, 4L))
   expect_equal(dim(est$covariance), c(4L, 4L, 3L))
   expect_equal(nrow(est$effects_long), 12L)
@@ -78,7 +78,7 @@ test_that("v1.0 interface fields: se, genotype_variance, locus_table, trait_name
   set.seed(52)
   G <- matrix(stats::rbinom(nrow(fit$rotation$Y_tilde) * 3, 2, 0.3), ncol = 3)
   colnames(G) <- paste0("snp", 1:3)
-  est <- estimate_mt_effects(fit, G, loci = 1:3)
+  est <- estimate_mt_effects(fit, G, targets = 1:3)
   # se equals sqrt(diag(covariance)) and matches effects_long
   expect_equal(unname(est$se[2, ]), sqrt(diag(est$covariance[, , 2])),
                tolerance = 1e-12)

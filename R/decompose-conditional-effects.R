@@ -115,11 +115,19 @@ decompose_conditional_effects <- function(
   }
   monotonicity_tol <- 1e-10   # frozen default (contract section 5.2)
 
-  beta_list <- .effects_to_beta_list(effects)
+  sig <- .effects_to_signal_betas(effects)
+  beta_list <- sig$betas
+  sig_ids <- sig$ids
   cand_sets <- .attribution_to_candidate_sets(
     attribution, required = restrict_to_candidates
   )
-  markers <- names(beta_list)
+  markers <- names(beta_list)   # signal ids
+  # tolerate plain marker-keyed candidate sets: remap to signal ids
+  if (length(cand_sets) > 0L && !any(names(cand_sets) %in% markers)) {
+    remap <- sig_ids$signal_id[
+      match(names(cand_sets), sig_ids$representative_snp)]
+    if (!anyNA(remap)) names(cand_sets) <- remap
+  }
   analysis_scope <- if (restrict_to_candidates) "candidates" else "all_traits"
   # custom sets are defined on the global trait space; per locus they are
   # intersected with that locus's candidate set
@@ -135,6 +143,8 @@ decompose_conditional_effects <- function(
 
   # ---- empty-table prototypes ------------------------------------------------
   empty_subset <- data.frame(
+    locus_id = character(), signal_id = character(),
+    representative_snp = character(),
     marker_id = character(), set_id = integer(),
     analysis_scope = character(),
     representing_set = I(list()), representing_key = character(),
@@ -150,6 +160,7 @@ decompose_conditional_effects <- function(
     stringsAsFactors = FALSE
   )
   empty_reps <- data.frame(
+    locus_id = character(), signal_id = character(),
     marker_id = character(), tolerance = numeric(),
     solution_id = integer(), trait_set = I(list()),
     trait_key = character(), set_size = integer(),
@@ -157,6 +168,7 @@ decompose_conditional_effects <- function(
     status = character(), stringsAsFactors = FALSE
   )
   empty_mods <- data.frame(
+    locus_id = character(), signal_id = character(),
     marker_id = character(), tolerance = numeric(),
     module_id = integer(), trait_set = I(list()),
     trait_key = character(), module_size = integer(),
@@ -165,6 +177,7 @@ decompose_conditional_effects <- function(
     stringsAsFactors = FALSE
   )
   empty_path <- data.frame(
+    locus_id = character(), signal_id = character(),
     marker_id = character(), tolerance = numeric(),
     minimum_set_size = integer(), n_minimum_sets = integer(),
     n_irreducible_modules = integer(), status = character(),
@@ -186,6 +199,9 @@ decompose_conditional_effects <- function(
 
   for (mk in markers) {
     beta_l <- beta_list[[mk]]
+    ids_row <- sig_ids[match(mk, sig_ids$signal_id), ]
+    lid <- ids_row$locus_id
+    rsnp <- ids_row$representative_snp
     if (restrict_to_candidates) {
       A_l <- if (mk %in% names(cand_sets)) cand_sets[[mk]] else character()
       A_l <- .normalize_trait_set(A_l, trait_names, "candidate set")
@@ -205,7 +221,8 @@ decompose_conditional_effects <- function(
       n_too_many <- n_too_many + 1L
       for (tol in tolerances) {
         path_list[[length(path_list) + 1L]] <- data.frame(
-          marker_id = mk, tolerance = tol,
+          locus_id = lid, signal_id = mk,
+          marker_id = rsnp, tolerance = tol,
           minimum_set_size = NA_integer_, n_minimum_sets = 0L,
           n_irreducible_modules = 0L, status = "too_many_traits",
           stringsAsFactors = FALSE
@@ -230,7 +247,8 @@ decompose_conditional_effects <- function(
         trait_names = A_l, inverse_tol = inverse_tol
       )
       rows[[si]] <- data.frame(
-        marker_id = mk, set_id = si,
+        locus_id = lid, signal_id = mk, representative_snp = rsnp,
+        marker_id = rsnp, set_id = si,
         analysis_scope = analysis_scope,
         representing_set = I(list(out$representing_set)),
         representing_key = out$representing_key,
@@ -302,20 +320,24 @@ decompose_conditional_effects <- function(
         mo[[key]] <- m
         if (nrow(r) > 0L) {
           reps_list[[length(reps_list) + 1L]] <-
-            cbind(marker_id = mk, r, stringsAsFactors = FALSE)
+            cbind(locus_id = lid, signal_id = mk, marker_id = rsnp, r,
+                  stringsAsFactors = FALSE)
         }
         if (nrow(m) > 0L) {
           mods_list[[length(mods_list) + 1L]] <-
-            cbind(marker_id = mk, m, stringsAsFactors = FALSE)
+            cbind(locus_id = lid, signal_id = mk, marker_id = rsnp, m,
+                  stringsAsFactors = FALSE)
         }
       }
       path <- .build_tolerance_path(tolerances, mr, mo, status = "ok")
       path_list[[length(path_list) + 1L]] <-
-        cbind(marker_id = mk, path, stringsAsFactors = FALSE)
+        cbind(locus_id = lid, signal_id = mk, marker_id = rsnp, path,
+              stringsAsFactors = FALSE)
     } else {
       for (tol in tolerances) {
         path_list[[length(path_list) + 1L]] <- data.frame(
-          marker_id = mk, tolerance = tol,
+          locus_id = lid, signal_id = mk,
+          marker_id = rsnp, tolerance = tol,
           minimum_set_size = NA_integer_, n_minimum_sets = 0L,
           n_irreducible_modules = 0L,
           status = if (subset_mode != "all" && locus_status == "ok") {
@@ -374,39 +396,33 @@ decompose_conditional_effects <- function(
   )
 }
 
-#' Convert an effects input to a per-marker named beta list
+#' Convert an effects input to per-signal betas with stable ids
 #'
-#' @param effects An [estimate_mt_effects()] result or an
-#'   `effects_long` data.frame.
-#' @return Named list: marker id -> named numeric effect vector.
+#' Accepts a [resolve_locus_signals()] result, an
+#' [estimate_mt_effects()] result or a data.frame (via
+#' [`.as_signal_effects()`]). SNP-level inputs map each marker to a
+#' degenerate one-signal locus.
+#'
+#' @param effects Effect input.
+#' @return List with `betas` (named list: signal id -> named numeric
+#'   effect vector) and `ids` (data.frame: `signal_id`, `locus_id`,
+#'   `representative_snp`).
 #' @keywords internal
-.effects_to_beta_list <- function(effects) {
-  if (is.list(effects) && !is.data.frame(effects)) {
-    if (!is.null(effects$status) && isFALSE(effects$status$ok)) {
-      .stop_invalid_input(
-        "effects result has status$ok == FALSE; cannot decompose."
-      )
-    }
-    effects <- effects$effects_long
-  }
-  if (!is.data.frame(effects) ||
-      !all(c("marker_id", "trait", "beta") %in% names(effects))) {
-    .stop_invalid_input(
-      "effects must provide an effects_long data.frame with marker_id, trait and beta."
-    )
-  }
-  if (anyNA(effects$beta)) {
+.effects_to_signal_betas <- function(effects) {
+  df <- .as_signal_effects(effects)
+  if (anyNA(df$beta)) {
     .stop_invalid_input("effects contains NA beta values.")
   }
-  out <- split(
-    seq_len(nrow(effects)),
-    factor(effects$marker_id, levels = unique(effects$marker_id))
-  )
-  lapply(out, function(idx) {
-    b <- effects$beta[idx]
-    names(b) <- as.character(effects$trait[idx])
+  ids <- unique(df[, c("signal_id", "locus_id", "representative_snp")])
+  rownames(ids) <- NULL
+  idx <- split(seq_len(nrow(df)),
+               factor(df$signal_id, levels = ids$signal_id))
+  betas <- lapply(idx, function(ii) {
+    b <- df$beta[ii]
+    names(b) <- df$trait[ii]
     b
   })
+  list(betas = betas, ids = ids)
 }
 
 #' Extract candidate trait sets from an attribution input

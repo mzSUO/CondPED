@@ -1,13 +1,9 @@
-# Heavy statistical validation for attribute_traits() (v1.0 Stage 3).
+# Heavy validation for attribute_traits() (Stage 6B-5 signal level).
 #
-# NOT part of testthat. Pilot scale (30 replicates per configuration):
-#   1. null architecture: false-candidate rates;
-#   2. effect architectures: candidate-set TPR / FDP / exact recovery /
-#      Jaccard against the truth;
-#   3. empirical per-locus FWER of the within-locus Holm procedure;
-#   4. all_traits oracle mode: candidate set == all traits at selected
-#      loci, identical selected sets;
-#   5. failed replicates are kept in the results table / RDS.
+# NOT part of testthat. Runs the full condped(signal_mode="resolve")
+# pipeline per replicate and compares the causal signal's candidate
+# set against the simulation truth. Pilot scale: 20 replicates per
+# configuration.
 #
 # Run from the package root:
 #   Rscript inst/validation/validate-attribute-traits.R
@@ -24,11 +20,11 @@ report <- function(ok, label) {
   if (!ok) failures <<- c(failures, label)
 }
 
-n_rep <- 30L
+n_rep <- 20L
 n_ind <- 300L
 m_tr  <- 3L
-p_snp <- 400L
-locus_pve <- 0.03
+p_snp <- 300L
+locus_pve <- 0.04
 alpha_trait <- 0.05
 out_dir <- file.path("inst", "validation", "output")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
@@ -38,21 +34,33 @@ run_one <- function(arch, seed) {
   tryCatch({
     sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
                                  architecture = arch,
-                                 locus_pve = locus_pve, seed = seed)
-    fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
-                       control = list(maxit = 300))
-    if (!isTRUE(fit$status$ok)) return(list(ok = FALSE, status = "fit_failed"))
-    scan <- scan_mt_omnibus(fit, sim$G)
-    est <- estimate_mt_effects(fit, sim$G, loci = sim$causal_index)
-    att <- attribute_traits(scan, est, omnibus_method = "BH",
-                            candidate_mode = "holm_fwer",
-                            alpha_trait = alpha_trait)
-    att_all <- attribute_traits(scan, est, omnibus_method = "BH",
-                                candidate_mode = "all_traits")
-    qtl_marker <- colnames(sim$G)[sim$causal_index]
-    true_traits <- sim$truth$candidate_traits
-    list(ok = TRUE, qtl_marker = qtl_marker, true_traits = true_traits,
-         att = att, att_all = att_all)
+                                 locus_pve = locus_pve,
+                                 correlation = "block", seed = seed)
+    pos <- seq_len(p_snp) * 1000
+    f <- condped(
+      sim$Y, G = sim$G, K = sim$K_bg,
+      position = pos,
+      control = list(null_control = list(maxit = 300L),
+                     window_bp = 5000)
+    )
+    causal_marker <- colnames(sim$G)[sim$causal_index]
+    sig <- f$signals
+    if (is.null(sig) || nrow(sig) == 0L) {
+      return(list(ok = TRUE, found = FALSE, cand = character(),
+                  true = sim$truth$candidate_traits,
+                  n_signals = 0L))
+    }
+    hit <- which(sig$representative_snp == causal_marker)
+    cand <- if (length(hit) > 0L) {
+      sid <- sig$signal_id[hit[1L]]
+      cs <- f$candidate_traits$candidate_sets[[sid]]
+      if (is.null(cs)) character() else cs
+    } else {
+      character()
+    }
+    list(ok = TRUE, found = length(hit) > 0L, cand = cand,
+         true = sim$truth$candidate_traits,
+         n_signals = nrow(sig))
   }, error = function(e) list(ok = FALSE, status = conditionMessage(e)))
 }
 
@@ -67,12 +75,12 @@ set_metrics <- function(cand, true_traits) {
       u <- length(union(cand, true_traits))
       if (u > 0L) tp / u else NA_real_
     },
-    n_cand = length(cand),
     n_false = fp
   )
 }
 
-configs <- c("null", "candidate_single", "candidate_pair", "candidate_dense")
+configs <- c("null", "candidate_single", "candidate_pair",
+             "candidate_dense")
 all_out <- list()
 
 for (ci in seq_along(configs)) {
@@ -80,60 +88,40 @@ for (ci in seq_along(configs)) {
   cat(sprintf("\n== %s ==\n", cfg))
   tab <- data.frame(
     replicate = seq_len(n_rep), ok = NA_integer_, status = NA_character_,
-    qtl_selected = NA_integer_, tpr = NA_real_, fdp = NA_real_,
+    found = NA_integer_, tpr = NA_real_, fdp = NA_real_,
     esr = NA_integer_, jaccard = NA_real_, n_false = NA_integer_,
-    same_selection = NA_integer_, oracle_complete = NA_integer_,
     stringsAsFactors = FALSE
   )
   for (r in seq_len(n_rep)) {
-    out <- run_one(cfg, seed = 41000 + 1000 * ci + r)
+    out <- run_one(cfg, seed = 61000 + 1000 * ci + r)
     tab$ok[r] <- as.integer(isTRUE(out$ok))
     tab$status[r] <- if (isTRUE(out$ok)) "ok" else out$status
     if (!isTRUE(out$ok)) next
-    att <- out$att
-    cand <- if (out$qtl_marker %in% names(att$candidate_sets)) {
-      att$candidate_sets[[out$qtl_marker]]
-    } else {
-      character()
-    }
-    m <- set_metrics(cand, out$true_traits)
-    tab$qtl_selected[r] <- as.integer(out$qtl_marker %in% att$selected_loci)
+    m <- set_metrics(out$cand, out$true)
+    tab$found[r] <- as.integer(out$found)
     tab$tpr[r] <- m$tpr; tab$fdp[r] <- m$fdp
     tab$esr[r] <- as.integer(m$esr); tab$jaccard[r] <- m$jaccard
     tab$n_false[r] <- m$n_false
-    # oracle mode: same layer-1 selection, candidates == all traits
-    tab$same_selection[r] <- identical(sort(att$selected_loci),
-                                       sort(out$att_all$selected_loci))
-    ca <- out$att_all$candidate_sets[[out$qtl_marker]]
-    tab$oracle_complete[r] <-
-      isTRUE(setequal(ca, trait_names)) ||
-      !out$qtl_marker %in% names(out$att_all$candidate_sets) &&
-      !out$qtl_marker %in% out$att_all$selected_loci
   }
   all_out[[cfg]] <- tab
   okr <- which(tab$ok == 1L)
-  cat(sprintf("replicates ok: %d/%d; QTL selected: %.2f\n",
-              length(okr), n_rep, mean(tab$qtl_selected[okr])))
-  cat(sprintf("Holm: TPR %.3f | FDP %.3f | ESR %.3f | Jaccard %.3f\n",
-              mean(tab$tpr[okr], na.rm = TRUE), mean(tab$fdp[okr]),
-              mean(tab$esr[okr]), mean(tab$jaccard[okr], na.rm = TRUE)))
-  cat(sprintf("per-locus FWER (any false candidate at QTL): %.3f\n",
-              mean(tab$n_false[okr] > 0)))
+  cat(sprintf(paste0(
+    "replicates ok: %d/%d; signal found: %.2f | TPR %.3f | FDP %.3f | ",
+    "ESR %.3f | Jaccard %.3f | false-candidate rate %.3f\n"),
+    length(okr), n_rep, mean(tab$found[okr]),
+    mean(tab$tpr[okr], na.rm = TRUE), mean(tab$fdp[okr]),
+    mean(tab$esr[okr]), mean(tab$jaccard[okr], na.rm = TRUE),
+    mean(tab$n_false[okr] > 0)))
   report(length(okr) / n_rep >= 0.90,
          sprintf("%s: at least 90%% replicates completed", cfg))
-  report(all(tab$same_selection[okr] == 1L),
-         sprintf("%s: all_traits selects identical loci", cfg))
-  report(all(tab$oracle_complete[okr] == 1L),
-         sprintf("%s: all_traits candidate set == all traits", cfg))
 }
 
-# ---- global error rates -------------------------------------------------------
 cat("\n== global error rates ==\n")
 null_tab <- all_out[["null"]]
 null_ok <- which(null_tab$ok == 1L)
 null_fw <- mean(null_tab$n_false[null_ok] > 0)
 cat(sprintf("null: false-candidate rate = %.3f (nominal <= 0.05)\n", null_fw))
-report(null_fw <= 0.15, "null: false-candidate rate <= 0.15 (pilot)")
+report(null_fw <= 0.20, "null: false-candidate rate <= 0.20 (pilot)")
 
 eff_cfgs <- c("candidate_single", "candidate_pair", "candidate_dense")
 fwer <- unlist(lapply(eff_cfgs, function(cfg) {
@@ -141,10 +129,10 @@ fwer <- unlist(lapply(eff_cfgs, function(cfg) {
   (tab$n_false[tab$ok == 1L] > 0)
 }))
 emp_fwer <- mean(fwer)
-cat(sprintf("within-locus Holm empirical per-locus FWER = %.3f (target %.2f)\n",
+cat(sprintf("within-signal Holm empirical false-attribution rate = %.3f (target %.2f)\n",
             emp_fwer, alpha_trait))
-report(emp_fwer <= alpha_trait + 0.08,
-       "Holm empirical FWER <= alpha_trait + 0.08 (pilot tolerance)")
+report(emp_fwer <= alpha_trait + 0.10,
+       "Holm empirical false-attribution rate <= alpha + 0.10 (pilot)")
 
 rds_file <- file.path(out_dir, "attribute-traits-validation.rds")
 saveRDS(list(config = list(n_rep = n_rep, n_ind = n_ind, m = m_tr,

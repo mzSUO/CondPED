@@ -2,7 +2,7 @@
 % Please edit documentation in R/condped.R
 \name{condped}
 \alias{condped}
-\title{End-to-end CondPED analysis (v1.0)}
+\title{End-to-end CondPED analysis (signal-level, revised v1.0)}
 \usage{
 condped(
   Y,
@@ -10,9 +10,11 @@ condped(
   G,
   K = NULL,
   chromosome = NULL,
+  position = NULL,
+  signal_mode = c("resolve", "predefined"),
   alpha_omnibus = 0.05,
   omnibus_adjust = c("BH", "bonferroni", "none"),
-  candidate_mode = c("holm_fwer", "all_traits"),
+  candidate_mode = c("holm_fwer", "all_traits", "predefined"),
   alpha_trait = 0.05,
   subset_mode = c("all", "singleton", "custom"),
   custom_sets = NULL,
@@ -27,27 +29,29 @@ condped(
 )
 }
 \arguments{
-\item{Y}{Numeric \verb{n x m} phenotype matrix (rows are individuals).}
+\item{Y}{Numeric \verb{n x m} phenotype matrix.}
 
-\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix; when
-\code{NULL} an intercept-only design is used.}
+\item{W}{Optional numeric \verb{n x q} fixed-effect design matrix.}
 
 \item{G}{Numeric \verb{n x p} genotype dosage matrix coded 0/1/2.}
 
-\item{K}{Optional numeric \verb{n x n} genomic relationship matrix; when
-\code{NULL} it is built once from \code{G}.}
+\item{K}{Optional numeric \verb{n x n} genomic relationship matrix.}
 
-\item{chromosome}{Optional length-\code{p} marker annotation vector; only
-carried through to \code{settings}, never used to switch null models.}
+\item{chromosome}{Optional length-\code{p} marker annotation.}
+
+\item{position}{Optional length-\code{p} physical positions; required for
+\code{signal_mode = "resolve"}.}
+
+\item{signal_mode}{\code{"resolve"} or \code{"predefined"}.}
 
 \item{alpha_omnibus}{Omnibus significance level.}
 
 \item{omnibus_adjust}{Adjustment method for the omnibus p-values.}
 
-\item{candidate_mode}{Candidate-set mode passed to
-\code{\link[=attribute_traits]{attribute_traits()}}: \code{"holm_fwer"} (formal) or \code{"all_traits"}.}
+\item{candidate_mode}{Candidate-set mode: \code{"holm_fwer"},
+\code{"all_traits"} or \code{"predefined"}.}
 
-\item{alpha_trait}{Within-locus Holm level.}
+\item{alpha_trait}{Within-signal Holm level.}
 
 \item{subset_mode}{Subset evaluation mode passed to
 \code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}.}
@@ -57,61 +61,65 @@ carried through to \code{settings}, never used to switch null models.}
 
 \item{tolerance}{Primary representation-loss tolerance.}
 
-\item{sensitivity_tolerance}{Additional tolerances for the
-sensitivity path.}
+\item{sensitivity_tolerance}{Additional tolerances.}
 
 \item{max_traits_exact}{Maximum candidate-set size for exact
 enumeration.}
 
-\item{pve, crossfit, bootstrap}{Logical P2 switches; all \code{FALSE} by
-default. The P2 modules are scheduled for a later stage: when set
-to \code{TRUE} a warning is emitted and the field stays \code{NULL}.}
+\item{pve, crossfit, bootstrap}{P2 switches (all \code{FALSE} by default;
+\code{TRUE} warns and returns \code{NULL} until Stage 10).}
 
-\item{control}{List with optional fields \code{followup_loci},
-\code{locus_unit}, \code{inverse_tol}, \code{qform_tol},
+\item{control}{List with optional fields \code{locus_method},
+\code{window_bp}, \code{r2_threshold}, \code{merge_overlaps}, \code{signal_adjust},
+\code{alpha_signal}, \code{fixed_p_threshold}, \code{max_signals},
+\code{predefined_signals}, \code{predefined_candidate_sets},
+\code{null_control}, \code{inverse_tol}, \code{qform_tol},
 \code{decomposition_rel_tol}, \code{monotonicity_tol},
-\code{condition_number_warning}, \code{null_control}. Unrecognised fields
-produce a warning.}
+\code{condition_number_warning}. Unrecognised fields warn.}
 
-\item{seed}{Random seed (recorded; the pipeline itself is
-deterministic given the data).}
+\item{seed}{Random seed (recorded).}
 }
 \value{
-An object of class \code{"condped_fit"}: a list with components
-\code{null_fit}, \code{omnibus}, \code{effects}, \code{candidate_traits},
-\code{subset_analysis} (list with \code{subset_table},
-\code{minimum_representative_sets}, \code{irreducible_modules},
-\code{tolerance_path}), \code{pve}, \code{crossfit}, \code{bootstrap}, \code{settings},
-\code{status} and \code{diagnostics}.
+An object of class \code{"condped_fit"} with components
+\code{null_fit}, \code{omnibus}, \code{loci}, \code{signals}, \code{effects},
+\code{candidate_traits}, \code{signal_summary}, \code{subset_analysis},
+\code{pve}, \code{crossfit}, \code{bootstrap}, \code{settings}, \code{status},
+\code{diagnostics}.
 }
 \description{
 The thinnest possible orchestrator: it only calls the existing
 public functions in the frozen order and never re-implements any
 formula. \code{fit_mt_null()} is called exactly once; there is no LOCO
-branch; \code{chromosome} is marker annotation only. When the P2 flags
-are \code{FALSE} (default), the P2 functions are never called and the
-corresponding fields are \code{NULL}.
+branch; \code{chromosome}/\code{position} are marker annotations.
 }
 \details{
-Frozen pipeline:
+\subsection{\code{signal_mode = "resolve"}}{
+
 \preformatted{
 validate inputs
 -> construct/read one fixed K
 -> fit_mt_null() exactly once
 -> scan_mt_omnibus()
--> determine follow-up loci
--> estimate_mt_effects()
+-> genome-wide p adjustment -> selected_markers
+-> define_associated_loci()
+-> resolve_locus_signals() (stepwise + final joint refit)
 -> attribute_traits()
+-> signal_summary
 -> derive_conditional_contrasts()
 -> decompose_conditional_effects()
 -> optional P2 modules
 }
 
-Follow-up loci: \code{control$followup_loci} when given (validated
-against the marker ids; the family for layer-1 adjustment then
-consists of these loci), otherwise the loci passing the omnibus
-screen (\code{omnibus_adjust} at \code{alpha_omnibus}). With no follow-up
-loci the function returns a structurally complete empty result with
-status code \code{empty_selection}; \code{omnibus_only} and
-\code{trait_restricted} loci are legal results, not failures.
+Every downstream step uses the FINAL joint signal-specific effects;
+stepwise temporary conditional betas never propagate.
+}
+
+\subsection{\code{signal_mode = "predefined"}}{
+
+Uses \code{control$predefined_signals} (a data.frame with \code{locus_id},
+\code{representative_snp} and \code{conditioning_snps}); the omnibus scan and
+locus construction are skipped. The signal+trait oracle combines
+\code{signal_mode = "predefined"}, \code{candidate_mode = "predefined"} and
+\code{control$predefined_candidate_sets}.
+}
 }

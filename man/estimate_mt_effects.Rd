@@ -7,8 +7,9 @@
 estimate_mt_effects(
   null_fit,
   G,
-  loci,
+  targets,
   marker_ids = colnames(G),
+  conditioning_sets = NULL,
   rank_tol = sqrt(.Machine$double.eps),
   return_covariance = TRUE
 )
@@ -19,11 +20,18 @@ estimate_mt_effects(
 
 \item{G}{Numeric \verb{n x p} genotype dosage matrix coded 0/1/2.}
 
-\item{loci}{Vector of locus indices (integer positions in \code{G}) or marker
-identifiers (matching \code{marker_ids}) to estimate.}
+\item{targets}{Vector of target marker indices (integer positions in
+\code{G}) or identifiers (matching \code{marker_ids}) to estimate.}
 
 \item{marker_ids}{Character vector of marker identifiers; defaults to
 \code{colnames(G)}.}
+
+\item{conditioning_sets}{Optional list with one entry per target:
+a (possibly empty) character vector of conditioning markers. When
+supplied, each target's estimate is its coefficient/covariance
+block in the joint GLS of (conditioning set + target), computed
+through the single shared path
+\code{\link[=.fit_joint_signal_effects]{.fit_joint_signal_effects()}}; \code{NULL} gives marginal effects.}
 
 \item{rank_tol}{Relative tolerance used for the generalised inverse of
 \eqn{J}.}

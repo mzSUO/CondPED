@@ -76,18 +76,17 @@ api_formals <- list(
   estimate_mt_effects = alist(
     null_fit = ,
     G = ,
-    loci = ,
+    targets = ,
     marker_ids = colnames(G),
+    conditioning_sets = NULL,
     rank_tol = sqrt(.Machine$double.eps),
     return_covariance = TRUE
   ),
   attribute_traits = alist(
-    omnibus = ,
     effects = ,
-    omnibus_method = c("BH", "bonferroni", "none"),
-    alpha_omnibus = 0.05,
-    candidate_mode = c("holm_fwer", "all_traits"),
+    candidate_mode = c("holm_fwer", "all_traits", "predefined"),
     alpha_trait = 0.05,
+    predefined_sets = NULL,
     return_all = TRUE
   ),
   derive_conditional_contrasts = alist(
@@ -121,6 +120,18 @@ api_formals <- list(
     r2_threshold = NULL,
     locus_map = NULL,
     merge_overlaps = TRUE
+  ),
+  resolve_locus_signals = alist(
+    null_fit = ,
+    G = ,
+    locus_object = ,
+    marker_ids = colnames(G),
+    signal_adjust = c("within_locus_bonferroni", "fixed", "none"),
+    alpha_signal = 0.05,
+    fixed_p_threshold = NULL,
+    max_signals = 10L,
+    rank_tol = sqrt(.Machine$double.eps),
+    return_conditional_scan = FALSE
   ),
   estimate_locus_pve = alist(
     effects = ,
@@ -166,9 +177,11 @@ api_formals <- list(
     G = ,
     K = NULL,
     chromosome = NULL,
+    position = NULL,
+    signal_mode = c("resolve", "predefined"),
     alpha_omnibus = 0.05,
     omnibus_adjust = c("BH", "bonferroni", "none"),
-    candidate_mode = c("holm_fwer", "all_traits"),
+    candidate_mode = c("holm_fwer", "all_traits", "predefined"),
     alpha_trait = 0.05,
     subset_mode = c("all", "singleton", "custom"),
     custom_sets = NULL,
@@ -246,8 +259,8 @@ api_formals <- list(
 
 deparse_default <- function(x) paste(deparse(x), collapse = " ")
 
-test_that("all 14 public API functions are exported", {
-  expect_length(api_formals, 14L)
+test_that("all 15 public API functions are exported", {
+  expect_length(api_formals, 15L)
   exports <- getNamespaceExports("CondPED")
   missing <- setdiff(names(api_formals), exports)
   expect_identical(missing, character())
@@ -282,7 +295,7 @@ test_that("every stub throws condped_not_implemented", {
                    "attribute_traits", "derive_conditional_contrasts",
                    "decompose_conditional_effects", "condped",
                    "evaluate_condped_simulation",
-                   "define_associated_loci")
+                   "define_associated_loci", "resolve_locus_signals")
   ns <- asNamespace("CondPED")
   for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)
