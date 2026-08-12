@@ -109,6 +109,19 @@ api_formals <- list(
     max_traits_exact = 10L,
     return_subset_table = TRUE
   ),
+  define_associated_loci = alist(
+    omnibus = ,
+    G = ,
+    chromosome = ,
+    position = ,
+    selected_markers = ,
+    marker_ids = colnames(G),
+    method = c("ld_clump", "physical", "custom"),
+    window_bp = NULL,
+    r2_threshold = NULL,
+    locus_map = NULL,
+    merge_overlaps = TRUE
+  ),
   estimate_locus_pve = alist(
     effects = ,
     genotype_variance = ,
@@ -233,8 +246,8 @@ api_formals <- list(
 
 deparse_default <- function(x) paste(deparse(x), collapse = " ")
 
-test_that("all 13 public API functions are exported", {
-  expect_length(api_formals, 13L)
+test_that("all 14 public API functions are exported", {
+  expect_length(api_formals, 14L)
   exports <- getNamespaceExports("CondPED")
   missing <- setdiff(names(api_formals), exports)
   expect_identical(missing, character())
@@ -268,7 +281,8 @@ test_that("every stub throws condped_not_implemented", {
                    "scan_mt_omnibus", "estimate_mt_effects",
                    "attribute_traits", "derive_conditional_contrasts",
                    "decompose_conditional_effects", "condped",
-                   "evaluate_condped_simulation")
+                   "evaluate_condped_simulation",
+                   "define_associated_loci")
   ns <- asNamespace("CondPED")
   for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)

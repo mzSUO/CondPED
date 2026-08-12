@@ -191,22 +191,25 @@ condped <- function(
   scan <- scan_mt_omnibus(fit, G, marker_ids = marker_ids)
   om <- scan$omnibus
 
-  # ---- follow-up loci --------------------------------------------------------------
+  # ---- genome-wide selection (explicit; scan returns raw p only) -------------
   valid <- !is.na(om$p_value)
-  p_adj <- switch(omnibus_adjust,
+  p_adjusted <- rep(NA_real_, nrow(om))
+  p_adjusted[valid] <- switch(omnibus_adjust,
     BH = stats::p.adjust(om$p_value[valid], method = "BH"),
     bonferroni = stats::p.adjust(om$p_value[valid], method = "bonferroni"),
     none = om$p_value[valid]
   )
-  omnibus_hits <- om$marker_id[valid][p_adj <= alpha_omnibus]
+  selected <- !is.na(p_adjusted) & p_adjusted <= alpha_omnibus
+  selected_markers <- om$marker_id[selected]
+  omnibus_hits <- selected_markers
   if (is.null(followup_loci)) {
-    followup <- omnibus_hits
+    followup <- selected_markers
     om_for_attr <- om
   } else {
     followup <- followup_loci
     om_for_attr <- om[om$marker_id %in% followup, , drop = FALSE]
   }
-  n_followup_significant <- sum(followup %in% omnibus_hits)
+  n_followup_significant <- sum(followup %in% selected_markers)
 
   # ---- effects, candidates, subset analysis ------------------------------------------
   if (length(followup) > 0L) {
