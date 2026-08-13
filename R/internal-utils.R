@@ -12,7 +12,8 @@
 #' @param code Status code, one of `"ok"`, `"invalid_input"`,
 #'   `"non_convergence"`, `"rank_deficient"`, `"ill_conditioned"`,
 #'   `"bootstrap_failed"`, `"unstable"`, `"empty_selection"`,
-#'   `"not_applicable"`, `"too_many_traits"`.
+#'   `"not_applicable"`, `"too_many_traits"`, `"invalid_covariance"`,
+#'   `"invalid_simulation"`.
 #' @param message Human readable message (character scalar).
 #' @param warnings Character vector of collected warnings.
 #'
@@ -23,7 +24,8 @@
                                  "rank_deficient", "ill_conditioned",
                                  "bootstrap_failed", "unstable",
                                  "empty_selection", "not_applicable",
-                                 "too_many_traits"),
+                                 "too_many_traits", "invalid_covariance",
+                                 "invalid_simulation"),
                         message = "",
                         warnings = character()) {
   code <- match.arg(code)

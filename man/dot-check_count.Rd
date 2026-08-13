@@ -6,16 +6,6 @@
 \usage{
 .check_count(x, name, min = 1L)
 }
-\arguments{
-\item{x}{Value to check.}
-
-\item{name}{Argument name used in the error message.}
-
-\item{min}{Minimum allowed value.}
-}
-\value{
-Invisible \code{TRUE}; stops otherwise.
-}
 \description{
 Check a positive integer-like scalar argument
 }

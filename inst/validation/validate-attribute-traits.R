@@ -33,7 +33,8 @@ trait_names <- paste0("Trait", seq_len(m_tr))
 run_one <- function(arch, seed) {
   tryCatch({
     sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
-                                 architecture = arch,
+                                 experiment = .scenario_experiment(arch),
+                                 scenario = arch,
                                  locus_pve = locus_pve,
                                  correlation = "block", seed = seed)
     pos <- seq_len(p_snp) * 1000
@@ -44,10 +45,15 @@ run_one <- function(arch, seed) {
                      window_bp = 5000)
     )
     causal_marker <- colnames(sim$G)[sim$causal_index]
+    true_traits <- if (length(sim$truth$candidate_traits) > 0L) {
+      unname(sim$truth$candidate_traits[[1L]])
+    } else {
+      character()
+    }
     sig <- f$signals
     if (is.null(sig) || nrow(sig) == 0L) {
       return(list(ok = TRUE, found = FALSE, cand = character(),
-                  true = sim$truth$candidate_traits,
+                  true = true_traits,
                   n_signals = 0L))
     }
     hit <- which(sig$representative_snp == causal_marker)
@@ -59,7 +65,7 @@ run_one <- function(arch, seed) {
       character()
     }
     list(ok = TRUE, found = length(hit) > 0L, cand = cand,
-         true = sim$truth$candidate_traits,
+         true = true_traits,
          n_signals = nrow(sig))
   }, error = function(e) list(ok = FALSE, status = conditionMessage(e)))
 }
@@ -79,8 +85,11 @@ set_metrics <- function(cand, true_traits) {
   )
 }
 
-configs <- c("null", "candidate_single", "candidate_pair",
-             "candidate_dense")
+.scenario_experiment <- function(cfg) {
+  if (cfg == "null") "signal_resolution" else "trait_representation"
+}
+configs <- c("null", "trait_specific", "two_trait_concordant",
+             "broad_concordant")
 all_out <- list()
 
 for (ci in seq_along(configs)) {
@@ -123,7 +132,8 @@ null_fw <- mean(null_tab$n_false[null_ok] > 0)
 cat(sprintf("null: false-candidate rate = %.3f (nominal <= 0.05)\n", null_fw))
 report(null_fw <= 0.20, "null: false-candidate rate <= 0.20 (pilot)")
 
-eff_cfgs <- c("candidate_single", "candidate_pair", "candidate_dense")
+eff_cfgs <- c("trait_specific", "two_trait_concordant",
+                "broad_concordant")
 fwer <- unlist(lapply(eff_cfgs, function(cfg) {
   tab <- all_out[[cfg]]
   (tab$n_false[tab$ok == 1L] > 0)

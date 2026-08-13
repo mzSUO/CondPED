@@ -6,14 +6,6 @@
 \usage{
 .cov_from_h2(var, R)
 }
-\arguments{
-\item{var}{Marginal variances (length m).}
-
-\item{R}{Correlation matrix (m x m).}
-}
-\value{
-The covariance matrix \verb{diag(sqrt(var)) R diag(sqrt(var))}.
-}
 \description{
 Build a covariance matrix from marginal variances and a correlation matrix
 }

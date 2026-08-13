@@ -6,25 +6,7 @@
 \usage{
 .sim_genotypes(n, maf, structured, n_groups, fst)
 }
-\arguments{
-\item{n}{Number of individuals.}
-
-\item{maf}{Base minor allele frequencies (length p).}
-
-\item{structured}{Logical; use group structure.}
-
-\item{n_groups}{Number of groups.}
-
-\item{fst}{Balding-Nichols differentiation parameter.}
-}
-\value{
-An \verb{n x p} dosage matrix (0/1/2).
-}
 \description{
-Markers are independent (no LD blocks). With \code{structured = TRUE},
-individuals are split into \code{n_groups} groups whose allele frequencies
-follow a Balding-Nichols model around the base MAF with parameter
-\code{fst}, giving the relationship matrix a non-degenerate eigenvalue
-dispersion.
+Generate genotype dosages with optional group structure
 }
 \keyword{internal}

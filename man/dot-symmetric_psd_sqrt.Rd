@@ -6,13 +6,6 @@
 \usage{
 .symmetric_psd_sqrt(Sigma)
 }
-\arguments{
-\item{Sigma}{Symmetric positive semi-definite matrix.}
-}
-\value{
-Symmetric matrix \code{S} with \code{S \%*\% S = Sigma}; tiny negative
-eigenvalues are floored at zero.
-}
 \description{
 Symmetric square root of a PSD matrix
 }

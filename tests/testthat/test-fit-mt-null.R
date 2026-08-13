@@ -141,7 +141,7 @@ test_that("m = 1 degenerates to the univariate linear mixed model", {
 
 test_that("fit_mt_null returns positive-definite covariances and valid output", {
   sim <- simulate_condped_data(n = 150, m = 3, p = 300,
-                               architecture = "null", seed = 31)
+                               experiment = "signal_resolution", scenario = "null", seed = 31)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                      control = list(maxit = 300))
   expect_s3_class(fit, "condped_mt_null")
@@ -167,7 +167,7 @@ test_that("fit_mt_null returns positive-definite covariances and valid output", 
 
 test_that("the optimum beats the starting point in log-likelihood", {
   sim <- simulate_condped_data(n = 150, m = 2, p = 300,
-                               architecture = "null", seed = 32)
+                               experiment = "signal_resolution", scenario = "null", seed = 32)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                      control = list(maxit = 300))
   theta_start <- c(CondPED:::.logchol_pack(diag(0.5 * apply(sim$Y, 2, stats::var))),
@@ -182,7 +182,7 @@ test_that("the optimum beats the starting point in log-likelihood", {
 
 test_that("rotation matrices reproduce the model identity", {
   sim <- simulate_condped_data(n = 100, m = 2, p = 200,
-                               architecture = "null", seed = 33)
+                               experiment = "signal_resolution", scenario = "null", seed = 33)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 1L,
                      control = list(maxit = 100))
   U <- fit$rotation$U
@@ -213,7 +213,7 @@ test_that("K near identity triggers identifiable_warning", {
   expect_true(any(grepl("weakly identifiable", fit_i$status$warnings)))
 
   sim <- simulate_condped_data(n = 100, m = 2, p = 200,
-                               architecture = "null", seed = 42)
+                               experiment = "signal_resolution", scenario = "null", seed = 42)
   fit_k <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 1L,
                        control = list(maxit = 100))
   expect_false(fit_k$diagnostics$identifiable_warning)
@@ -223,7 +223,7 @@ test_that("K near identity triggers identifiable_warning", {
 
 test_that("set.seed gives reproducible fits and return_rotation = FALSE works", {
   sim <- simulate_condped_data(n = 100, m = 2, p = 200,
-                               architecture = "null", seed = 51)
+                               experiment = "signal_resolution", scenario = "null", seed = 51)
   set.seed(1)
   fit1 <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 3L,
                       control = list(maxit = 150))
@@ -255,7 +255,7 @@ test_that("log-Cholesky pack/unpack round-trips", {
 
 test_that("gamma satisfies the orthogonality identity on the fitted Sigma_P", {
   sim <- simulate_condped_data(n = 150, m = 3, p = 300,
-                               architecture = "null", seed = 61)
+                               experiment = "signal_resolution", scenario = "null", seed = 61)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                      control = list(maxit = 300))
   SP <- fit$Sigma_P_ref
@@ -276,7 +276,7 @@ test_that("gamma satisfies the orthogonality identity on the fitted Sigma_P", {
 
 test_that("residual_tilde is consistent with the GLS fixed effects", {
   sim <- simulate_condped_data(n = 100, m = 2, p = 200,
-                               architecture = "null", seed = 62)
+                               experiment = "signal_resolution", scenario = "null", seed = 62)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                      control = list(maxit = 200))
   rot <- fit$rotation
@@ -299,7 +299,7 @@ test_that("residual_tilde is consistent with the GLS fixed effects", {
 
 test_that("every start is recorded and the selected one is the best legal", {
   sim <- simulate_condped_data(n = 100, m = 2, p = 200,
-                               architecture = "null", seed = 63)
+                               experiment = "signal_resolution", scenario = "null", seed = 63)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 4L,
                      control = list(maxit = 200))
   st <- fit$convergence$starts
@@ -319,7 +319,7 @@ test_that("every start is recorded and the selected one is the best legal", {
 
 test_that("invalid inputs raise condped_invalid_input errors", {
   sim <- simulate_condped_data(n = 60, m = 2, p = 120,
-                               architecture = "null", seed = 71)
+                               experiment = "signal_resolution", scenario = "null", seed = 71)
   Y <- sim$Y
   K <- sim$K_bg
 
@@ -368,7 +368,7 @@ test_that("invalid inputs raise condped_invalid_input errors", {
 
 test_that("v1.0 interface fields: Sigma_P_ref, trait_names, individual_ids", {
   sim <- simulate_condped_data(n = 60, m = 3, p = 100,
-                               architecture = "null", seed = 77)
+                               experiment = "signal_resolution", scenario = "null", seed = 77)
   fit <- fit_mt_null(sim$Y, K = sim$K_bg,
                      control = list(maxit = 100))
   expect_equal(fit$Sigma_P_ref, fit$Sigma_G + fit$Sigma_E)

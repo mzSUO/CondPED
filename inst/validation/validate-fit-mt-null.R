@@ -65,7 +65,7 @@ run_scenario <- function(sc, reps, seed0) {
     t0 <- proc.time()[["elapsed"]]
     fit <- tryCatch({
       sim <- simulate_condped_data(n = n, m = m, p = sc$p,
-                                   architecture = "null",
+                                   experiment = "signal_resolution", scenario = "null",
                                    structured = TRUE, n_groups = 8L,
                                    fst = 0.05, seed = seed0 + r)
       # tryCatch evaluates its expression in this frame: plain <- suffices
@@ -174,7 +174,7 @@ fe_errs <- vector("list", fe_reps)
 B_true <- matrix(c(0.5, -0.3, 1.0, 0.2, -0.8, 0.4), nrow = 2, ncol = 3)
 for (r in seq_len(fe_reps)) {
   sim <- simulate_condped_data(n = 500, m = 3, p = 1000,
-                               architecture = "null", structured = TRUE,
+                               experiment = "signal_resolution", scenario = "null", structured = TRUE,
                                seed = 3001 + r)
   W <- cbind(1, stats::rnorm(500))
   fit_f <- fit_mt_null(sim$Y + W %*% B_true, W = W[, 2, drop = FALSE],

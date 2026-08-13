@@ -8,7 +8,7 @@
   ok = TRUE,
   code = c("ok", "invalid_input", "non_convergence", "rank_deficient", "ill_conditioned",
     "bootstrap_failed", "unstable", "empty_selection", "not_applicable",
-    "too_many_traits"),
+    "too_many_traits", "invalid_covariance", "invalid_simulation"),
   message = "",
   warnings = character()
 )
@@ -19,7 +19,8 @@
 \item{code}{Status code, one of \code{"ok"}, \code{"invalid_input"},
 \code{"non_convergence"}, \code{"rank_deficient"}, \code{"ill_conditioned"},
 \code{"bootstrap_failed"}, \code{"unstable"}, \code{"empty_selection"},
-\code{"not_applicable"}, \code{"too_many_traits"}.}
+\code{"not_applicable"}, \code{"too_many_traits"}, \code{"invalid_covariance"},
+\code{"invalid_simulation"}.}
 
 \item{message}{Human readable message (character scalar).}
 

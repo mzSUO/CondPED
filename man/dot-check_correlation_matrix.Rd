@@ -6,16 +6,6 @@
 \usage{
 .check_correlation_matrix(R, m, name)
 }
-\arguments{
-\item{R}{Candidate matrix.}
-
-\item{m}{Expected dimension.}
-
-\item{name}{Argument name used in error messages.}
-}
-\value{
-Invisible \code{TRUE}; stops otherwise.
-}
 \description{
 Validate a correlation matrix argument
 }

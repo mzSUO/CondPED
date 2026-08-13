@@ -3,19 +3,20 @@ Type: Package
 Title: Conditional Projection for Decomposing Genetic Effects in Multi-Trait GWAS
 Version: 0.1.0
 Authors@R: c(person(given = "Mingzhe", family = "Suo", email = "suomingzhe1@gmail.com", role = c("aut", "cre")))
-Description: Provides a conditional projection framework for decomposing SNP effects 
-    into independent and shared components in multi-trait genome-wide association 
-    studies (GWAS). The method constructs conditional phenotypes via covariance-based 
-    projection and performs bidirectional conditional testing to identify trait-specific 
-    quantitative trait loci (QTL). It enables distinction between direct genetic effects 
+Description: Provides a conditional projection framework for decomposing SNP effects
+    into independent and shared components in multi-trait genome-wide association
+    studies (GWAS). The method constructs conditional phenotypes via covariance-based
+    projection and performs bidirectional conditional testing to identify trait-specific
+    quantitative trait loci (QTL). It enables distinction between direct genetic effects
     and covariance-mediated associations using a unified statistical framework.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
-Depends: 
+Depends:
     R (>= 4.0.0)
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    ASSET (>= 0.1.0)
 Roxygen: list(markdown = TRUE)
 URL: https://github.com/mzSUO/CondPED
 BugReports: https://github.com/mzSUO/CondPED/issues

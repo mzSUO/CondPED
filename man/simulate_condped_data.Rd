@@ -2,7 +2,7 @@
 % Please edit documentation in R/simulate-condped-data.R
 \name{simulate_condped_data}
 \alias{simulate_condped_data}
-\title{Simulate CondPED data with population structural truth (v1.0)}
+\title{Simulate CondPED data with population structural truth (revised v1.0)}
 \usage{
 simulate_condped_data(
   n = 1000L,
@@ -12,15 +12,17 @@ simulate_condped_data(
   h2 = rep(0.5, m),
   R_G = NULL,
   R_E = NULL,
-  architecture = c("null", "candidate_single", "candidate_pair", "candidate_dense",
-    "representative_singleton", "representative_pair", "representative_full",
-    "irreducible_singleton", "irreducible_pair", "multiple_modules"),
-  effect_direction = c("default", "concordant", "discordant", "mixed"),
+  experiment = c("signal_resolution", "trait_representation", "end_to_end"),
+  scenario,
+  n_signals = NULL,
   locus_pve = 0.01,
+  secondary_signal_pve = 0.005,
+  local_ld = c("none", "low", "moderate", "high"),
+  target_r2 = NULL,
+  local_region_size = 50L,
   tolerance = 0.1,
-  target_loss = 0.05,
-  target_representative_set = NULL,
-  target_irreducible_modules = NULL,
+  target_loss = NULL,
+  target_representing_set = NULL,
   correlation = c("block", "independent"),
   structured = TRUE,
   n_groups = 8L,
@@ -42,92 +44,97 @@ simulate_condped_data(
 
 \item{h2}{Trait heritabilities (length 1 or \code{m}).}
 
-\item{R_G, R_E}{Optional \verb{m x m} correlation matrices; default from
-\code{correlation}.}
+\item{R_G, R_E}{Optional \verb{m x m} correlation matrices.}
 
-\item{architecture}{One of the ten frozen scenarios; see the
-interface contract.}
+\item{experiment}{One of \code{"signal_resolution"},
+\code{"trait_representation"}, \code{"end_to_end"}.}
 
-\item{effect_direction}{Sign pattern of the candidate effect
-template: \code{"concordant"} (all same direction), \code{"discordant"}
-(all non-leading effects flipped), \code{"mixed"} (alternating signs,
-identical to \code{"discordant"} for a pair). Only meaningful for
-\code{candidate_pair} and \code{candidate_dense}; must be \code{"default"} for
-every other architecture.}
+\item{scenario}{Scenario within the experiment (see the frozen
+registry; e.g. \code{"null"}, \code{"single_multi_trait"},
+\code{"two_linked_trait_specific"}, \code{"highly_representable"}).}
 
-\item{locus_pve}{Target mean per-candidate-trait PVE of the causal
-variant.}
+\item{n_signals}{Optional consistency check on the scenario's
+signal count.}
 
-\item{tolerance}{Primary loss tolerance tau.}
+\item{locus_pve}{Marginal PVE calibration target of the primary
+signal.}
 
-\item{target_loss}{Closed-form target loss \code{r}; only used by the
-representative scenarios.}
+\item{secondary_signal_pve}{Marginal PVE calibration target of each
+secondary signal.}
 
-\item{target_representative_set}{Optional target set for the
-representative scenarios (defaults: trait 1 / traits 1-2).}
+\item{local_ld}{Target LD level inside the focal region:
+\code{"none"} (0), \code{"low"} (0.1), \code{"moderate"} (0.3) or \code{"high"}
+(0.6).}
 
-\item{target_irreducible_modules}{Optional list of module sets for
-the irreducible scenarios (defaults: trait 1 / traits 1-2 /
-\code{{1}} and \verb{\{3..m\}}).}
+\item{target_r2}{Optional explicit target pairwise r^2 inside the
+focal region (overrides \code{local_ld}).}
 
-\item{correlation}{\code{"block"} (consecutive trait pairs form modules
-with within-module correlation 0.6 and between-module 0.2) or
-\code{"independent"}. Note that joint irreducible
-modules (\code{irreducible_pair}, \code{multiple_modules}) require correlated
-traits; under \code{"independent"} their acceptance rule correctly
-never passes and the function returns status \code{unstable}.}
+\item{local_region_size}{Number of markers in the focal region.}
 
-\item{structured}{Logical; group structure for GRM eigenvalue
-dispersion.}
+\item{tolerance}{Primary representation-loss tolerance tau.}
 
-\item{n_groups, fst}{Balding-Nichols group structure parameters.}
+\item{target_loss}{Optional closed-form target rho* for the
+representability scenarios (default 0.02).}
 
-\item{truth_margin}{Minimum allowed distance between any subset
-loss and \code{tolerance} in the structural scenarios.}
+\item{target_representing_set}{Optional target representing set
+S* for the representability scenarios.}
 
-\item{max_attempts}{Maximum number of generation attempts.}
+\item{correlation}{Background trait correlation structure.}
+
+\item{structured, n_groups, fst}{Population-structure settings for
+the background GRM.}
+
+\item{truth_margin}{Minimum distance of structural-scenario losses
+from \code{tolerance}.}
+
+\item{max_attempts}{Maximum generation attempts.}
 
 \item{seed}{Optional random seed.}
 
-\item{return_latent}{Logical; keep \code{U} and \code{E} (default \code{FALSE}).}
+\item{return_latent}{Logical; keep \code{U} and \code{E}.}
 }
 \value{
 A list with components \code{Y}, \code{W}, \code{G}, \code{K_bg},
-\code{causal_index}, \code{truth} (list with \code{beta}, \code{candidate_traits},
-\code{subset_table}, \code{minimum_representative_sets},
-\code{irreducible_modules}, \code{tolerance_path}, \code{locus_pve},
-\code{target_loss}, \code{delta}, \code{Sigma_causal}, \code{Sigma_G_total},
-\code{Sigma_G_bg}, \code{Sigma_E}, \code{Sigma_P_total}), \code{generator}, \code{status}
-and \code{diagnostics}.
+\code{focal_region} (marker ids of the focal region), \code{causal_index},
+\code{truth}, \code{generator}, \code{status} and \code{diagnostics}. The truth
+fields follow the unified v1.0 schema (\code{loci}, \code{signals},
+\code{causal_markers}, \code{signal_count}, \code{local_ld},
+\code{realized_signal_pve}, \code{beta}, \code{candidate_traits},
+\code{effect_breadth}, \code{effect_direction}, \code{subset_table},
+\code{representation_map}, \code{minimum_representative_sets},
+\code{irreducible_modules}, \code{tolerance_path}, \code{Sigma_G_total},
+\code{Sigma_G_bg}, \code{Sigma_Q}, \code{Sigma_E}, \code{Sigma_P_total},
+\code{Sigma_P_ref}).
 }
 \description{
-Generates individual-level multi-trait data with one simulated
-causal variant and the full population-level structural truth: the
-candidate trait set, the complete subset loss table, the minimum
-representative trait sets and the irreducible trait modules. All
-truth is computed with the SAME deterministic loss path used by
-estimation (\code{\link[=.compute_subset_loss]{.compute_subset_loss()}} and the Stage-2 extractors),
-evaluated on population parameters.
+Generates individual-level multi-trait data under the unified
+multi-signal phenotype model
+\deqn{Y = WB + X_Q B_Q + U + E}
+with a focal locus of one or more possibly linked causal signals,
+plus the complete population structural truth (candidate traits,
+full representation-loss map, minimum representative sets and
+irreducible modules per signal).
 }
 \details{
-The data-generating model is
-\deqn{Y = WB + \tilde{x}_l\beta_l^{\top} + U + E}
-with \code{U ~ MN(0, K_bg, Sigma_G_bg)} and \code{E ~ MN(0, I_n, Sigma_E)}.
-The causal variant never enters the background GRM, and
-\verb{Sigma_G_bg = Sigma_G_total - v_l beta beta'}; only generations
-with positive semi-definite \code{Sigma_G_bg} are accepted. Effect
-vectors are scaled as a whole to the target PVE; the representation
-loss is invariant to this scaling, and the truth tables are
-computed AFTER scaling from the final beta and Sigma.
+All focal-region markers are excluded from the background GRM, and
+\deqn{\Sigma_Q = B_Q^\top \Sigma_X B_Q,\qquad
+\Sigma_G^{bg} = \Sigma_G^{tot} - \Sigma_Q}
+Only generations with positive semi-definite \eqn{\Sigma_G^{bg}} are
+accepted; if no generation qualifies within \code{max_attempts}, the
+function returns status \code{invalid_covariance} (no silent clipping).
 
-\code{representative_singleton}/\code{representative_pair} use the closed-form
-construction of Methods eqs. (39)-(41): with
-\verb{R = A \\ S*},
-\deqn{\beta_R = \Gamma_{R|S*}^{\top}\beta_{S*} + \delta d,\qquad
-  d^{\top}\Omega^{-1}d = 1,\qquad
-  \delta = \sqrt{\frac{r\,\beta_{S*}^{\top}\Sigma_{S*S*}^{-1}\beta_{S*}}
-  {1-r}}}
-so that the target set has population loss exactly r = target_loss.
-All acceptance rules read population beta, Sigma and the truth
-subset table only -- never sample p-values or fitted results.
+Per-signal PVE scaling reuses the single-signal scaler (primary
+signal: \code{locus_pve}; secondary signals: \code{secondary_signal_pve});
+these are marginal calibration targets only and are never summed
+into a regional PVE. After row-wise scaling, the full
+\eqn{\Sigma_Q} is recomputed and the truth records both the
+realized per-signal PVE and the regional covariance contribution.
+
+Representability scenarios (R1/R2/R3) use the closed-form
+target-rho construction (Methods): with R = A \ S*,
+\eqn{\beta_R = \Gamma_{R|S^*}^\top \beta_{S^*} + \delta d},
+\eqn{d^\top \Omega^{-1} d = 1},
+\eqn{\delta = \sqrt{\rho^\star A_0 / (1 - \rho^\star)}}.
+The full rho map is then exactly enumerated with the same Stage-1
+loss path, and Rep/Irr are extracted from that map only.
 }

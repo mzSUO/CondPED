@@ -2,22 +2,29 @@
 % Please edit documentation in R/evaluate-condped-simulation.R
 \name{evaluate_condped_simulation}
 \alias{evaluate_condped_simulation}
-\title{Evaluate CondPED simulation replicates (v1.0)}
+\title{Evaluate CondPED simulation replicates (v1.0, Stage 6C)}
 \usage{
 evaluate_condped_simulation(
   files,
-  metrics = c("type1_omnibus", "power_omnibus", "beta_bias", "beta_rmse",
-    "beta_coverage", "beta_sign_accuracy", "candidate_tpr", "candidate_fdp",
-    "candidate_exact_recovery", "candidate_jaccard", "conditional_effect_bias",
-    "conditional_effect_rmse", "conditional_effect_sign_accuracy",
-    "representation_loss_bias", "representation_loss_rmse", "representation_loss_mae",
+  metrics = c("locus_detection_rate", "signal_count_exact_recovery",
+    "secondary_signal_power", "missed_signal_rate", "extra_signal_rate",
+    "signal_coverage", "representative_to_causal_r2",
+    "representative_to_causal_distance", "residual_local_false_positive_rate",
+    "type1_omnibus", "power_omnibus", "beta_bias", "beta_rmse", "beta_coverage",
+    "beta_sign_accuracy", "candidate_tpr", "candidate_fdp", "candidate_precision",
+    "candidate_exact_recovery", "candidate_jaccard", "effect_breadth_bias",
+    "direction_recovery",
+     "conditional_effect_bias", "conditional_effect_rmse",
+    "conditional_effect_sign_accuracy", "representation_loss_bias",
+    "representation_loss_rmse", "representation_loss_mae",
     "representation_threshold_accuracy", "representation_map_mae",
-    "representative_exact_recovery", "representative_jaccard",
-    "representative_size_bias", 
-     "tie_coverage", "irreducible_tpr",
-    "irreducible_fdp", "irreducible_exact_recovery", "irreducible_jaccard",
-    "joint_module_miss_rate", "over_fragmentation_rate", "overall_recovery",
-    "conditional_recovery", "runtime"),
+    "rep_min_cardinality_recovery", "rep_exact_family_recovery", "rep_tie_coverage",
+    "irr_family_recovery", "irr_missed_rate", "irr_extra_split_rate", "asset_power",
+    "asset_trait_set_jaccard", "asset_trait_set_precision", "asset_trait_set_recall",
+    "asset_direction_recovery",
+     "lead_trait_breadth_inflation",
+    "resolved_trait_breadth_inflation", "pseudo_multitrait_interpretation_rate",
+    "overall_recovery", "conditional_recovery", "runtime"),
   include_unstable = TRUE,
   group_by = c("experiment", "n", "architecture", "locus_pve", "correlation",
     "target_loss", "tolerance"),
@@ -46,10 +53,17 @@ non-ok replicates), \code{settings} and \code{status}.
 }
 \description{
 Computes per-replicate recovery metrics and grouped summaries with
-Monte Carlo standard errors. All set comparisons use normalised
-trait keys; families are compared as whole sets of keys (never just
-the first solution). The empty-set rules of the frozen contract are
-applied verbatim. No legacy D/profile/persistent metrics exist.
+Monte Carlo standard errors. Truth signals and estimated signals are
+first matched by genomic position (never by signal-id string): loci
+are matched by chromosome plus interval overlap, and signals within
+overlapping loci are matched one-to-one by representative-to-causal
+distance (or by genotype r^2 when a genotype matrix is supplied).
+All per-signal metrics are averages over the MATCHED signal pairs;
+unrecovered signals are absent from beta/candidate/eta/rho/Rep/Irr
+metrics (never coded as beta = 0). All set comparisons use
+normalised trait keys; families are compared as whole sets of keys
+(never just the first solution). The empty-set rules of the frozen
+contract are applied verbatim.
 }
 \details{
 \subsection{Replicate file format}{
@@ -57,21 +71,32 @@ applied verbatim. No legacy D/profile/persistent metrics exist.
 Each entry of \code{files} is an RDS containing one replicate result:
 \describe{
 \item{truth}{The \code{truth} component of a
-\code{\link[=simulate_condped_data]{simulate_condped_data()}} call.}
-\item{estimates}{A list with \code{causal_marker}, \code{omnibus_summary}
-(data.frame with \code{marker_id} and \code{p_value}), \code{candidate_sets}
-(named list marker -> traits), \code{minimum_representative_sets}
-and \code{irreducible_modules} (data.frames as returned by
-\code{\link[=decompose_conditional_effects]{decompose_conditional_effects()}}). Optional for the
-quantitative metrics: \code{beta} and \code{se} (named vectors or
-one-row matrices of estimated effects and standard errors at
-the causal marker) and \code{subset_table} (with
-\code{conditional_effect}).}
+\code{\link[=simulate_condped_data]{simulate_condped_data()}} call: \code{loci}, \code{signals}, \code{beta} (long
+format), \code{candidate_traits}, \code{effect_breadth},
+\code{effect_direction}, \code{minimum_representative_sets},
+\code{irreducible_modules}, \code{subset_table} and friends.}
+\item{estimates}{A list with \code{signals} (data.frame with
+\code{locus_id}, \code{signal_id}, \code{signal_order}, \code{representative_snp}
+and optionally \code{chromosome}/\code{position}), \code{beta} (long
+data.frame with \code{locus_id}, \code{signal_order}, \code{trait}, \code{beta},
+\code{se}), \code{candidate_sets} (named list signal_id -> traits),
+\code{minimum_representative_sets}, \code{irreducible_modules},
+\code{subset_table}, \code{omnibus_summary} (data.frame with \code{marker_id}
+and \code{p_value}) and optionally \code{positions} (named marker ->
+position vector), \code{G} (genotype matrix) and \code{asset} (per-pipeline
+ASSET results, see below).}
 \item{settings}{List with the scenario descriptors named in
-\code{group_by} plus \code{tolerance} and \code{alpha_omnibus}.}
+\code{group_by} plus \code{tolerance} and \code{alpha_omnibus}; may also carry
+\code{positions} and \code{G}.}
 \item{status}{Standard status list.}
 \item{runtime}{Numeric seconds.}
 }
+
+The optional \code{estimates$asset} component is a list with entries
+\code{lead}, \code{resolved} and \code{condped}; each entry is a list with \code{sets}
+(named list signal_id -> selected trait subset) and \code{p} (named
+p-values), and optionally \code{direction} (named direction patterns).
+When absent, the nine ASSET/ablation metrics are \code{NA}.
 
 Rep metrics are the PRIMARY set-level summary; Irr metrics are the
 secondary set-level summary (recorded in \code{settings$metric_levels}).
@@ -79,50 +104,88 @@ secondary set-level summary (recorded in \code{settings$metric_levels}).
 
 \subsection{Metric definitions (per replicate, primary tolerance)}{
 
+Signal-resolution metrics:
+\describe{
+\item{locus_detection_rate}{Fraction of truth loci overlapped by
+at least one estimated locus.}
+\item{signal_count_exact_recovery}{Over detected truth loci,
+fraction whose estimated signal count equals the truth signal
+count.}
+\item{secondary_signal_power}{Fraction of truth signals with
+\code{signal_order >= 2} that are matched (\code{NA} when the truth has a
+single signal).}
+\item{missed_signal_rate}{Missed truth signals / total truth
+signals.}
+\item{extra_signal_rate}{Extra estimated signals /
+max(1, total estimated signals).}
+\item{signal_coverage}{Matched truth signals / total truth
+signals.}
+\item{representative_to_causal_r2}{Mean squared genotype
+correlation between estimated representative and causal marker
+over matched pairs (\code{NA} without a genotype matrix).}
+\item{representative_to_causal_distance}{Mean distance in bp over
+matched pairs.}
+\item{residual_local_false_positive_rate}{Fraction of detected
+truth loci containing at least one unmatched (extra) estimated
+signal.}
+}
+
+Quantitative metrics (averaged over matched signal pairs):
 \describe{
 \item{type1_omnibus}{Fraction of non-causal markers with
 \code{p_value <= alpha_omnibus}.}
-\item{power_omnibus}{Indicator that the causal marker passes;
+\item{power_omnibus}{Indicator that any causal marker passes;
 \code{NA} for the null architecture.}
 \item{beta_bias, beta_rmse, beta_coverage,
 beta_sign_accuracy}{Signed mean error, RMSE, 95\% interval
 coverage (only when \code{se} is supplied) and sign accuracy (over
-traits with nonzero true effect) of the causal-marker effect
-vector.}
-\item{candidate_tpr, candidate_fdp, candidate_exact_recovery,
-candidate_jaccard}{TPR / FDP / exact recovery / Jaccard of the
-estimated candidate set against \code{truth$candidate_traits}.}
+traits with nonzero true effect), computed per matched pair
+over traits and then averaged.}
+\item{candidate_tpr, candidate_fdp, candidate_precision,
+candidate_exact_recovery, candidate_jaccard}{TPR / FDP /
+precision (1 - FDP) / exact recovery / Jaccard of the estimated
+candidate set against \code{truth$candidate_traits}, per matched
+pair.}
+\item{effect_breadth_bias}{Estimated candidate-set size minus
+truth breadth, averaged over matched pairs.}
+\item{direction_recovery}{Fraction of matched pairs whose
+estimated direction pattern (frozen rule: 0 candidates ->
+not_applicable, 1 -> single_trait, >= 2 same sign ->
+concordant, 2 opposite -> antagonistic, >= 3 both signs ->
+mixed) equals \code{truth$effect_direction}.}
 \item{conditional_effect_bias, conditional_effect_rmse,
 conditional_effect_sign_accuracy}{Elementwise bias, RMSE and
 sign accuracy (over elements with nonzero true eta) of the
 conditional effects eta over subset-table rows matched by
-\code{representing_key} (elements aligned by complement trait name).}
+\code{representing_key} within the matched pair.}
 \item{representation_loss_bias, representation_loss_rmse,
 representation_loss_mae, representation_threshold_accuracy,
 representation_map_mae}{Bias, RMSE and MAE of the
 representation loss over matched subset rows; the fraction of
 rows whose feasibility side (loss <= tolerance) matches the
-truth; and the per-locus mean absolute error over the subset
-map (equal to the row-wise MAE for single-signal replicates).}
-\item{representative_exact_recovery, representative_jaccard,
-representative_size_bias, tie_coverage}{Family exact recovery,
-family Jaccard, set-size bias (estimated minus truth minimum
-size) and \code{tie_coverage}: the fraction of truth tied minimum
-sets whose key appears in the estimated family.}
-\item{irreducible_tpr, irreducible_fdp,
-irreducible_exact_recovery, irreducible_jaccard}{TPR / FDP /
-family exact recovery / family Jaccard over module keys.}
-\item{joint_module_miss_rate}{Fraction of truth modules of size
-greater than 1 whose key is not exactly recovered (\code{NA} when
-the truth has no joint module).}
-\item{over_fragmentation_rate}{Fraction of truth joint modules
-for which the estimated family contains two or more strict
-sub-modules (\code{NA} when the truth has no joint module).}
+truth; and the row-wise MAE of the subset map.}
+\item{rep_min_cardinality_recovery, rep_exact_family_recovery,
+rep_tie_coverage}{Indicator that the estimated minimum set size
+equals the truth minimum set size; representative-family exact
+recovery; and the fraction of truth tied minimum sets whose key
+appears in the estimated family.}
+\item{irr_family_recovery, irr_missed_rate,
+irr_extra_split_rate}{Irreducible-module family exact recovery;
+fraction of truth joint modules (size > 1) whose key is not
+exactly recovered; fraction of truth joint modules split into
+two or more strict sub-modules (both \code{NA} when the truth has no
+joint module).}
+\item{asset_power, asset_trait_set_jaccard,
+asset_trait_set_precision, asset_trait_set_recall,
+asset_direction_recovery, lead_trait_breadth_inflation,
+resolved_trait_breadth_inflation,
+pseudo_multitrait_interpretation_rate}{ASSET/ablation metrics
+read from \code{estimates$asset}; all \code{NA} when absent.}
 \item{overall_recovery}{Candidate exact AND representative family
-exact AND module family exact.}
+exact AND module family exact, averaged over matched pairs.}
 \item{conditional_recovery}{Representative family exact AND
-module family exact, evaluated only when the candidate set was
-exactly recovered (\code{NA} otherwise).}
+module family exact, evaluated only for pairs whose candidate
+set was exactly recovered (\code{NA} otherwise).}
 }
 
 Empty-set rules (frozen): truth empty + estimate empty -> exact = 1,

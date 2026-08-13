@@ -8,7 +8,8 @@
   truth,
   estimates,
   settings = list(),
-  runtime = NA_real_
+  runtime = NA_real_,
+  G = NULL
 )
 }
 \arguments{
@@ -20,11 +21,16 @@
 \item{settings}{Replicate settings (scenario descriptors).}
 
 \item{runtime}{Numeric seconds.}
+
+\item{G}{Optional n x p genotype matrix with marker-id column
+names; enables the representative-to-causal r^2 metric and
+r^2-based signal matching.}
 }
 \value{
 A one-row data.frame of metrics plus scenario columns.
 }
 \description{
-Per-replicate metrics against the population truth
+Matches truth and estimated signals with \code{\link[=.match_signals]{.match_signals()}} and
+averages the per-signal metrics over the matched pairs.
 }
 \keyword{internal}

@@ -6,12 +6,6 @@
 \usage{
 .min_eigen_sym(A)
 }
-\arguments{
-\item{A}{Symmetric matrix.}
-}
-\value{
-Numeric scalar.
-}
 \description{
 Smallest eigenvalue of a symmetric matrix
 }

@@ -6,18 +6,7 @@
 \usage{
 .block_cor(m, within = 0.6, between = 0.2)
 }
-\arguments{
-\item{m}{Dimension.}
-
-\item{within}{Within-block correlation.}
-
-\item{between}{Between-block correlation.}
-}
-\value{
-An \verb{m x m} correlation matrix.
-}
 \description{
-Blocks are consecutive trait pairs (traits 1-2, 3-4, ...) as in the
-Methods simulation design (traits A,B and C,D form modules).
+Block correlation matrix (within-block 0.6, between-block 0.2)
 }
 \keyword{internal}

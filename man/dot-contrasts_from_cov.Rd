@@ -6,17 +6,8 @@
 \usage{
 .contrasts_from_cov(Sigma_P, trait_names = colnames(Sigma_P))
 }
-\arguments{
-\item{Sigma_P}{\verb{m x m} phenotypic covariance matrix.}
-
-\item{trait_names}{Character vector of trait names.}
-}
-\value{
-List with \code{gamma}, \code{C} and \code{conditional_variance}.
-}
 \description{
 Legacy helper still used by the \code{fit_mt_null()} compatibility
-fields (\code{compute_gamma}). Scheduled for removal when the null-model
-interface is migrated.
+fields (\code{compute_gamma}).
 }
 \keyword{internal}

@@ -1,10 +1,11 @@
-# Validation for simulate_condped_data() (v1.0 Stage 4).
+# Stage 6C validation: deterministic scenario checks.
 #
-# NOT part of testthat. Per Runbook 6.8: each architecture is
-# generated 20 times and ONLY the population truth is checked (no
-# CondPED fitting). Reports per architecture:
-#   attempts, PSD failures, PVE error, truth margin,
-#   candidate set, minimum representative sets, irreducible modules.
+# NOT part of testthat. Covers the frozen validation scenarios:
+# null / one signal / two independent signals / two linked
+# trait-specific signals / R1 / R2 / R3 / linked pseudo-multitrait /
+# mixed multi-signal / all three analysis modes / ASSET adapter.
+# Population truth and structural checks only -- no formal
+# 500-replicate simulation here.
 #
 # Run from the package root:
 #   Rscript inst/validation/validate-simulate-condped-data.R
@@ -21,107 +22,162 @@ report <- function(ok, label) {
   if (!ok) failures <<- c(failures, label)
 }
 
-n_rep <- 20L
+n_base <- 500L
+m_base <- 4L
+p_base <- 400L
 tol <- 0.10
-architectures <- c("null", "candidate_single", "candidate_pair",
-                   "candidate_dense", "representative_singleton",
-                   "representative_pair", "representative_full",
-                   "irreducible_singleton", "irreducible_pair",
-                   "multiple_modules")
 
-loss_of <- function(tab, key) {
-  i <- match(key, tab$representing_key)
-  if (is.na(i)) NA_real_ else tab$representation_loss[i]
+mk <- function(experiment, scenario, seed, ...) {
+  simulate_condped_data(n = n_base, m = m_base, p = p_base,
+                        experiment = experiment, scenario = scenario,
+                        local_region_size = 30L, seed = seed, ...)
 }
-keys_at <- function(df) sort(df$trait_key[df$tolerance == tol])
 
-summ <- data.frame(
-  architecture = character(), n_accept = integer(),
-  median_attempts = numeric(), psd_failures = integer(),
-  max_pve_error = numeric(), min_margin = numeric(),
+check_common <- function(s, label) {
+  q <- unname(s$truth$signal_count)
+  list(
+    psd = CondPED:::.min_eigen_sym(s$truth$Sigma_G_bg) > -1e-8,
+    sigma_q = if (q == 0L) {
+      isTRUE(all.equal(unname(s$truth$Sigma_Q),
+                       matrix(0, m_base, m_base), tolerance = 1e-10))
+    } else {
+      isTRUE(all.equal(
+        s$truth$Sigma_Q,
+        crossprod(s$truth$B_Q, s$truth$Sigma_X %*% s$truth$B_Q),
+        tolerance = 1e-10))
+    },
+    sigma_bg = isTRUE(all.equal(
+      s$truth$Sigma_G_bg, s$truth$Sigma_G_total - s$truth$Sigma_Q,
+      tolerance = 1e-10)),
+    trace = abs(s$diagnostics$trace_K_over_n - 1) < 1e-8,
+    mono = q == 0L || CondPED:::.check_loss_monotonicity(
+      s$truth$subset_table)$n_violations == 0L
+  )
+}
+
+cat("== 1. null ==\n")
+s <- mk("signal_resolution", "null", 1)
+ck <- check_common(s, "null")
+report(all(unlist(ck)), "null: covariance/GRM/monotonicity checks")
+report(s$truth$signal_count == 0L &&
+         nrow(s$truth$subset_table) == 0L,
+       "null: zero signals, empty truth tables")
+
+cat("== 2. one signal ==\n")
+s <- mk("signal_resolution", "single_multi_trait", 2)
+ck <- check_common(s)
+report(all(unlist(ck)), "single_multi_trait: common checks")
+report(s$truth$signal_count == 1L &&
+         identical(unname(s$truth$candidate_traits[[1L]]),
+                   c("Trait1", "Trait2")),
+       "single_multi_trait: candidate set {T1, T2}")
+
+cat("== 3. two independent signals ==\n")
+s <- mk("signal_resolution", "two_heterogeneous", 3,
+        local_ld = "none")
+ck <- check_common(s)
+report(all(unlist(ck)), "two_heterogeneous: common checks")
+report(s$truth$signal_count == 2L &&
+         s$truth$local_ld$realized_mean_r2 < 0.10,
+       "two independent signals: LD ~ 0, both signals present")
+
+cat("== 4. two linked trait-specific signals ==\n")
+s <- mk("signal_resolution", "two_linked_trait_specific", 4,
+        target_r2 = 0.3)
+ck <- check_common(s)
+report(all(unlist(ck)), "two_linked_trait_specific: common checks")
+report(abs(s$truth$local_ld$realized_mean_r2 - 0.3) < 0.05,
+       "linked signals: realized LD matches target 0.3")
+
+cat("== 5-7. R1 / R2 / R3 ==\n")
+r1 <- mk("trait_representation", "highly_representable", 5)
+r2 <- mk("trait_representation", "partially_representable", 6)
+r3 <- mk("trait_representation", "strongly_nonredundant", 7)
+tab1 <- r1$truth$subset_table
+reps1 <- r1$truth$minimum_representative_sets
+reps1 <- reps1[reps1$tolerance == tol, ]
+report(min(reps1$set_size) == 1L,
+       sprintf("R1: min Rep cardinality = 1 (loss(S*) = %.3f)",
+               tab1$representation_loss[
+                 tab1$representing_key == "Trait1"]))
+tab2 <- r2$truth$subset_table
+reps2 <- r2$truth$minimum_representative_sets
+reps2 <- reps2[reps2$tolerance == tol, ]
+report(all(tab2$representation_loss[tab2$set_size == 1L] > tol) &&
+         min(reps2$set_size) == 2L,
+       sprintf(paste0("R2: all singletons > tau, min pair = %.3f, ",
+                      "min Rep cardinality = 2"),
+               min(tab2$representation_loss[tab2$set_size == 2L])))
+tab3 <- r3$truth$subset_table
+k3 <- max(tab3$set_size)
+min_proper <- min(tab3$representation_loss[tab3$set_size < k3])
+report(min_proper > tol,
+       sprintf("R3: all proper subsets > tau (min proper rho = %.3f)",
+               min_proper))
+# scale matching does not change the maps
+r1b <- mk("trait_representation", "highly_representable", 5,
+          locus_pve = 0.02)
+report(isTRUE(all.equal(r1$truth$subset_table$representation_loss,
+                        r1b$truth$subset_table$representation_loss,
+                        tolerance = 1e-10)),
+       "R1: scale matching leaves the rho map unchanged")
+
+cat("== 8. linked pseudo-multitrait ==\n")
+s <- mk("end_to_end", "linked_pseudo_multitrait", 8)
+ck <- check_common(s)
+report(all(unlist(ck)) && s$truth$signal_count == 2L &&
+         s$truth$local_ld$realized_mean_r2 > 0.4,
+       "linked_pseudo_multitrait: 2 signals, high LD")
+
+cat("== 9. mixed multi-signal ==\n")
+s <- mk("end_to_end", "mixed_multisignal", 9)
+ck <- check_common(s)
+report(all(unlist(ck)) && s$truth$signal_count == 2L,
+       "mixed_multisignal: common checks, 2 signals")
+
+cat("== 10. analysis modes ==\n")
+mm <- CondPED:::.analysis_mode_mapping
+report(identical(mm("full")$signal_mode, "resolve") &&
+         identical(mm("signal_oracle")$candidate_mode, "holm_fwer") &&
+         identical(mm("signal_trait_oracle")$candidate_mode,
+                   "predefined"),
+       "analysis-mode mapping frozen")
+# signal_trait_oracle end-to-end smoke on a small replicate
+s <- mk("end_to_end", "single_highly_representable", 10)
+ps <- data.frame(
+  locus_id = s$truth$loci$locus_id,
+  representative_snp = s$truth$signals$representative_snp,
   stringsAsFactors = FALSE
 )
+ps$conditioning_snps <- list(character())
+pre_sets <- stats::setNames(list(s$truth$candidate_traits[[1L]]),
+                            s$truth$signals$signal_id)
+f <- condped(
+  s$Y, G = s$G, K = s$K_bg,
+  signal_mode = "predefined", candidate_mode = "predefined",
+  control = list(null_control = list(maxit = 300L),
+                 predefined_signals = ps,
+                 predefined_candidate_sets = pre_sets)
+)
+report(isTRUE(f$status$ok) &&
+         identical(f$candidate_traits$candidate_sets[[1L]],
+                   s$truth$candidate_traits[[1L]]),
+       "signal_trait_oracle: truth sets flow through condped")
 
-for (ai in seq_along(architectures)) {
-  arch <- architectures[ai]
-  cat(sprintf("\n== %s ==\n", arch))
-  n_accept <- 0L
-  atts <- numeric(n_rep)
-  psd <- 0L
-  max_pve_err <- 0
-  min_margin <- Inf
-  struct_ok <- 0L
-  for (r in seq_len(n_rep)) {
-    s <- simulate_condped_data(
-      n = 200, m = 4L, p = 200L, architecture = arch,
-      correlation = "block", seed = 51000 + 1000 * ai + r
-    )
-    atts[r] <- s$diagnostics$attempts
-    psd <- psd + s$diagnostics$psd_failures
-    if (!isTRUE(s$status$ok)) next
-    n_accept <- n_accept + 1L
-    cand <- s$truth$candidate_traits
-    tab <- s$truth$subset_table
-    reps <- keys_at(s$truth$minimum_representative_sets)
-    mods <- keys_at(s$truth$irreducible_modules)
-    if (length(cand) > 0L) {
-      max_pve_err <- max(max_pve_err,
-                         abs(mean(s$truth$locus_pve[cand]) - 0.01))
-      min_margin <- min(min_margin,
-                        min(abs(tab$representation_loss - tol)))
-    }
-    ok <- switch(arch,
-      null = length(cand) == 0L && nrow(tab) == 0L,
-      candidate_single = identical(cand, "Trait1"),
-      candidate_pair = identical(cand, c("Trait1", "Trait2")),
-      candidate_dense = length(cand) == 4L,
-      representative_singleton = reps[1] == "Trait1" &&
-        s$truth$minimum_representative_sets$set_size[
-          s$truth$minimum_representative_sets$tolerance == tol][1] == 1L,
-      representative_pair = "Trait1|Trait2" %in% reps &&
-        all(tab$representation_loss[tab$set_size == 1L] > tol),
-      representative_full = all(
-        tab$representation_loss[tab$set_size < 4L] > tol),
-      irreducible_singleton = "Trait1" %in% mods,
-      irreducible_pair = "Trait1|Trait2" %in% mods &&
-        loss_of(tab, "Trait2|Trait3|Trait4") <= tol &&
-        loss_of(tab, "Trait1|Trait3|Trait4") <= tol,
-      multiple_modules = identical(mods, c("Trait1", "Trait3|Trait4")),
-      FALSE
-    )
-    struct_ok <- struct_ok + isTRUE(ok)
-    if (r <= 2L) {
-      cat(sprintf(paste0("  rep %2d: attempts=%d psd_fail=%d pve_err=%.2e ",
-                         "margin=%.3f cand=[%s] reps=[%s] mods=[%s]\n"),
-                  r, s$diagnostics$attempts, s$diagnostics$psd_failures,
-                  if (length(cand)) abs(mean(s$truth$locus_pve[cand]) - 0.01) else 0,
-                  if (nrow(tab)) min(abs(tab$representation_loss - tol)) else NA,
-                  paste(cand, collapse = ","),
-                  paste(reps, collapse = "/"), paste(mods, collapse = "/")))
-    }
-  }
-  summ <- rbind(summ, data.frame(
-    architecture = arch, n_accept = n_accept,
-    median_attempts = median(atts), psd_failures = psd,
-    max_pve_error = max_pve_err,
-    min_margin = if (is.finite(min_margin)) min_margin else NA_real_
-  ))
-  cat(sprintf("accepted %d/%d; structure rule ok %d/%d\n",
-              n_accept, n_rep, struct_ok, n_accept))
-  report(n_accept == n_rep,
-         sprintf("%s: all %d generations accepted", arch, n_rep))
-  report(struct_ok == n_accept,
-         sprintf("%s: population truth satisfies its definition", arch))
+cat("== 11. ASSET adapter ==\n")
+if (exists(".run_asset_comparison", envir = asNamespace("CondPED"))) {
+  out <- CondPED:::.run_asset_comparison(
+    beta = c(T1 = 0.3, T2 = -0.2),
+    se = c(T1 = 0.1, T2 = 0.1),
+    Sigma_Z = matrix(c(1, 0.4, 0.4, 1), 2),
+    trait_names = c("T1", "T2")
+  )
+  report(identical(out$status, "asset_not_available") ||
+           identical(out$status, "ok"),
+         sprintf("ASSET adapter status: %s", out$status))
+} else {
+  report(FALSE, "ASSET adapter .run_asset_comparison() missing")
 }
-
-cat("\n== summary ==\n")
-print(summ, right = FALSE)
-report(all(summ$max_pve_error[!is.na(summ$max_pve_error)] < 1e-8 |
-             is.na(summ$max_pve_error)),
-       "PVE realised within 1e-8 of target for all accepted generations")
-struct_rows <- summ$architecture %in% architectures[5:10]
-report(all(summ$min_margin[struct_rows] >= 0.02),
-       "truth_margin >= 0.02 achieved in all structural scenes")
 
 cat("\n")
 if (length(failures) > 0L) {
@@ -129,5 +185,5 @@ if (length(failures) > 0L) {
   for (f in failures) cat(" -", f, "\n")
   quit(status = 1L)
 } else {
-  cat("All simulate_condped_data validation checks passed.\n")
+  cat("All Stage 6C validation checks passed.\n")
 }

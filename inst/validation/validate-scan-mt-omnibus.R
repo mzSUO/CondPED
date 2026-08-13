@@ -33,10 +33,16 @@ alpha   <- 0.05
 out_dir <- file.path("inst", "validation", "output")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
+# scenario name -> experiment family (v1.0 Stage 6C registry)
+.scenario_experiment <- function(arch) {
+  if (arch == "null") "signal_resolution" else "trait_representation"
+}
+
 run_one <- function(arch, seed) {
   tryCatch({
     sim <- simulate_condped_data(n = n_ind, m = m_tr, p = p_snp,
-                                 architecture = arch,
+                                 experiment = .scenario_experiment(arch),
+                                 scenario = arch,
                                  locus_pve = 0.03, seed = seed)
     fit <- fit_mt_null(sim$Y, K = sim$K_bg, n_starts = 2L,
                        control = list(maxit = 300))
@@ -118,9 +124,9 @@ qq <- data.frame(
 cat("\n== 2. Power under effect architectures ==\n")
 power_tab <- data.frame(architecture = character(), power = numeric(),
                         n_ok = integer(), stringsAsFactors = FALSE)
-for (arch in c("candidate_single", "candidate_pair", "candidate_dense")) {
-  out <- collect(arch, 12000 + match(arch, c("candidate_single", "candidate_pair",
-                                             "candidate_dense")) * 1000)
+for (arch in c("trait_specific", "two_trait_concordant", "broad_concordant")) {
+  out <- collect(arch, 12000 + match(arch, c("trait_specific", "two_trait_concordant",
+                                             "broad_concordant")) * 1000)
   ok_res <- Filter(function(x) isTRUE(x$ok), out$res)
   qtl_p <- vapply(ok_res, `[[`, numeric(1), "qtl_p")
   power <- mean(qtl_p < alpha, na.rm = TRUE)
