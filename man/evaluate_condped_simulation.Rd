@@ -10,19 +10,21 @@ evaluate_condped_simulation(
     "secondary_signal_power", "missed_signal_rate", "extra_signal_rate",
     "signal_coverage", "representative_to_causal_r2",
     "representative_to_causal_distance", "residual_local_false_positive_rate",
-    "type1_omnibus", "power_omnibus", "beta_bias", "beta_rmse", "beta_coverage",
-    "beta_sign_accuracy", "candidate_tpr", "candidate_fdp", "candidate_precision",
-    "candidate_exact_recovery", "candidate_jaccard", "effect_breadth_bias",
-    "direction_recovery",
-     "conditional_effect_bias", "conditional_effect_rmse",
-    "conditional_effect_sign_accuracy", "representation_loss_bias",
-    "representation_loss_rmse", "representation_loss_mae",
+    "signal_resolution_attempt_rate", "conditional_signal_count_exact_recovery",
+    "conditional_secondary_signal_power", "conditional_missed_signal_rate",
+    "truth_locus_split_rate", "type1_omnibus", "power_omnibus", "beta_bias", "beta_rmse",
+    "beta_coverage",
+     "beta_sign_accuracy", "candidate_tpr", "candidate_fdp",
+    "candidate_precision", "candidate_exact_recovery", "candidate_jaccard",
+    "effect_breadth_bias", "direction_recovery", "conditional_effect_bias",
+    "conditional_effect_rmse", "conditional_effect_sign_accuracy",
+    "representation_loss_bias", "representation_loss_rmse", "representation_loss_mae",
     "representation_threshold_accuracy", "representation_map_mae",
     "rep_min_cardinality_recovery", "rep_exact_family_recovery", "rep_tie_coverage",
-    "irr_family_recovery", "irr_missed_rate", "irr_extra_split_rate", "asset_power",
-    "asset_trait_set_jaccard", "asset_trait_set_precision", "asset_trait_set_recall",
-    "asset_direction_recovery",
-     "lead_trait_breadth_inflation",
+    "irr_family_recovery",
+     "irr_missed_rate", "irr_extra_split_rate",
+    "asset_power", "asset_trait_set_jaccard", "asset_trait_set_precision",
+    "asset_trait_set_recall", "asset_direction_recovery", "lead_trait_breadth_inflation",
     "resolved_trait_breadth_inflation", "pseudo_multitrait_interpretation_rate",
     "overall_recovery", "conditional_recovery", "runtime"),
   include_unstable = TRUE,
@@ -128,6 +130,22 @@ matched pairs.}
 \item{residual_local_false_positive_rate}{Fraction of detected
 truth loci containing at least one unmatched (extra) estimated
 signal.}
+\item{signal_resolution_attempt_rate}{Indicator that at least one
+truth locus was detected and therefore entered conditional signal
+resolution (\code{NA} when the truth has no loci).}
+\item{conditional_signal_count_exact_recovery}{Alias of
+\code{signal_count_exact_recovery}, making the conditioning on locus
+detection explicit (\code{NA} when no truth locus is detected).}
+\item{conditional_secondary_signal_power}{Fraction of truth
+secondary signals (\code{signal_order >= 2}) in detected truth loci
+that are matched (\code{NA} when no detected locus carries a
+secondary signal).}
+\item{conditional_missed_signal_rate}{Missed truth signals in
+detected truth loci / truth signals in detected loci (\code{NA} when
+no truth locus is detected).}
+\item{truth_locus_split_rate}{Fraction of detected truth loci
+overlapped by more than one estimated locus (\code{NA} when no truth
+locus is detected).}
 }
 
 Quantitative metrics (averaged over matched signal pairs):

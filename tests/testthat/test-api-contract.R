@@ -203,6 +203,11 @@ api_formals <- list(
       "representative_to_causal_r2",
       "representative_to_causal_distance",
       "residual_local_false_positive_rate",
+      "signal_resolution_attempt_rate",
+      "conditional_signal_count_exact_recovery",
+      "conditional_secondary_signal_power",
+      "conditional_missed_signal_rate",
+      "truth_locus_split_rate",
       "type1_omnibus",
       "power_omnibus",
       "beta_bias",
@@ -258,13 +263,13 @@ api_formals <- list(
     grid = ,
     reps = ,
     out_dir = ,
-    master_seed = 20260727L,
+    master_seed = 20260804L,
     workers = 1L,
     backend = c("sequential", "parallel"),
     resume = TRUE,
     overwrite = FALSE,
     save_data = FALSE,
-    save_fit = TRUE,
+    save_fit = FALSE,
     fail_policy = c("save_unstable", "stop"),
     progress = interactive()
   )
@@ -308,7 +313,8 @@ test_that("every stub throws condped_not_implemented", {
                    "attribute_traits", "derive_conditional_contrasts",
                    "decompose_conditional_effects", "condped",
                    "evaluate_condped_simulation",
-                   "define_associated_loci", "resolve_locus_signals")
+                   "define_associated_loci", "resolve_locus_signals",
+                   "run_condped_simulation")
   ns <- asNamespace("CondPED")
   for (fn_name in setdiff(names(api_formals), implemented)) {
     fn <- get(fn_name, envir = ns)

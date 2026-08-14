@@ -75,6 +75,22 @@
 #'   \item{residual_local_false_positive_rate}{Fraction of detected
 #'     truth loci containing at least one unmatched (extra) estimated
 #'     signal.}
+#'   \item{signal_resolution_attempt_rate}{Indicator that at least one
+#'     truth locus was detected and therefore entered conditional signal
+#'     resolution (`NA` when the truth has no loci).}
+#'   \item{conditional_signal_count_exact_recovery}{Alias of
+#'     `signal_count_exact_recovery`, making the conditioning on locus
+#'     detection explicit (`NA` when no truth locus is detected).}
+#'   \item{conditional_secondary_signal_power}{Fraction of truth
+#'     secondary signals (`signal_order >= 2`) in detected truth loci
+#'     that are matched (`NA` when no detected locus carries a
+#'     secondary signal).}
+#'   \item{conditional_missed_signal_rate}{Missed truth signals in
+#'     detected truth loci / truth signals in detected loci (`NA` when
+#'     no truth locus is detected).}
+#'   \item{truth_locus_split_rate}{Fraction of detected truth loci
+#'     overlapped by more than one estimated locus (`NA` when no truth
+#'     locus is detected).}
 #' }
 #'
 #' Quantitative metrics (averaged over matched signal pairs):
@@ -166,6 +182,11 @@ evaluate_condped_simulation <- function(
     "representative_to_causal_r2",
     "representative_to_causal_distance",
     "residual_local_false_positive_rate",
+    "signal_resolution_attempt_rate",
+    "conditional_signal_count_exact_recovery",
+    "conditional_secondary_signal_power",
+    "conditional_missed_signal_rate",
+    "truth_locus_split_rate",
     "type1_omnibus",
     "power_omnibus",
     "beta_bias",
@@ -222,7 +243,13 @@ evaluate_condped_simulation <- function(
     "secondary_signal_power", "missed_signal_rate", "extra_signal_rate",
     "signal_coverage", "representative_to_causal_r2",
     "representative_to_causal_distance",
-    "residual_local_false_positive_rate", "type1_omnibus",
+    "residual_local_false_positive_rate",
+    "signal_resolution_attempt_rate",
+    "conditional_signal_count_exact_recovery",
+    "conditional_secondary_signal_power",
+    "conditional_missed_signal_rate",
+    "truth_locus_split_rate",
+    "type1_omnibus",
     "power_omnibus", "beta_bias", "beta_rmse", "beta_coverage",
     "beta_sign_accuracy", "candidate_tpr", "candidate_fdp",
     "candidate_precision", "candidate_exact_recovery",
@@ -434,13 +461,19 @@ evaluate_condped_simulation <- function(
         intersect(c("complement_key", "complement_trait"), names(sub))),
       paste0(side, "$subset_table")
     )
-    for (nm in c("representation_map", "minimum_representative_sets",
+    for (nm in c("minimum_representative_sets",
                  "irreducible_modules", "tolerance_path")) {
       .check_key_uniqueness(obj[[nm]],
                             c("locus_id", "signal_id", "tolerance",
                               "trait_key"),
                             paste0(side, "$", nm))
     }
+    # the representation map is keyed per subset row, not per tolerance
+    .check_key_uniqueness(
+      obj$representation_map,
+      c("locus_id", "signal_id", "representing_key"),
+      paste0(side, "$representation_map")
+    )
   }
 
   # ---- signal matching ---------------------------------------------------------
@@ -462,14 +495,17 @@ evaluate_condped_simulation <- function(
 
   count_exact <- NA_real_
   local_fpr <- NA_real_
+  split_rate <- NA_real_
   if (length(detected_loci) > 0L) {
     exact_v <- numeric(length(detected_loci))
     fpr_v <- numeric(length(detected_loci))
+    n_est_per_locus <- integer(length(detected_loci))
     for (li in seq_along(detected_loci)) {
       lid <- detected_loci[[li]]
       e_loci <- unique(m$locus_matches$est_locus_id[
         m$locus_matches$truth_locus_id == lid
       ])
+      n_est_per_locus[[li]] <- length(e_loci)
       e_ids <- m$est_signals$signal_id[m$est_signals$locus_id %in% e_loci]
       exact_v[[li]] <- as.numeric(
         length(e_ids) == sum(t_sig$locus_id == lid)
@@ -478,6 +514,7 @@ evaluate_condped_simulation <- function(
     }
     count_exact <- mean(exact_v)
     local_fpr <- mean(fpr_v)
+    split_rate <- mean(n_est_per_locus > 1L)
   }
 
   sec_power <- NA_real_
@@ -488,6 +525,30 @@ evaluate_condped_simulation <- function(
 
   missed_rate <- if (n_t == 0L) NA_real_ else length(m$missed) / n_t
   extra_rate <- length(m$extra) / max(1, n_e)
+
+  # ---- conditional (given locus detection) resolution metrics -------------------
+  attempt_rate <- if (n_loci_t == 0L) {
+    NA_real_
+  } else {
+    as.numeric(length(detected_loci) > 0L)
+  }
+  # signal_count_exact_recovery is already conditioned on detection
+  cond_count_exact <- count_exact
+  cond_sec_power <- NA_real_
+  cond_missed <- NA_real_
+  if (length(detected_loci) > 0L) {
+    in_det <- t_sig$locus_id %in% detected_loci
+    det_ids <- t_sig$signal_id[in_det]
+    if (length(det_ids) > 0L) {
+      cond_missed <- mean(!det_ids %in% matches$truth_signal_id)
+    }
+    if ("signal_order" %in% names(t_sig)) {
+      sec_det <- t_sig$signal_id[in_det & t_sig$signal_order >= 2]
+      if (length(sec_det) > 0L) {
+        cond_sec_power <- mean(sec_det %in% matches$truth_signal_id)
+      }
+    }
+  }
   coverage <- if (n_t == 0L) {
     NA_real_
   } else {
@@ -696,6 +757,17 @@ evaluate_condped_simulation <- function(
   asset <- estimates$asset
   if (!is.null(asset) && n_t > 0L) {
     sids <- t_sig$signal_id
+    # estimate-side ids via the genomic/LD match (never name equality)
+    est_sid <- matches$est_signal_id[match(sids, matches$truth_signal_id)]
+    est_lid <- matches$est_locus_id[
+      match(t_sig$locus_id, matches$truth_locus_id)]
+    get0 <- function(lst, id) {
+      if (is.null(lst) || is.na(id) || !id %in% names(lst)) {
+        NULL
+      } else {
+        lst[[id]]
+      }
+    }
     t_breadths <- vapply(sids, function(s) {
       if (!is.null(truth$effect_breadth) &&
           s %in% names(truth$effect_breadth)) {
@@ -705,10 +777,12 @@ evaluate_condped_simulation <- function(
         if (is.null(tc)) 0 else length(tc)
       }
     }, numeric(1))
-    widths_of <- function(entry) {
-      vapply(sids, function(s) {
+    widths_of <- function(entry, key = c("signal", "locus")) {
+      key <- match.arg(key)
+      ids <- if (key == "signal") est_sid else est_lid
+      vapply(seq_along(sids), function(k) {
         st <- if (!is.null(entry) && !is.null(entry$sets)) {
-          entry$sets[[s]]
+          get0(entry$sets, ids[[k]])
         }
         if (is.null(st)) 0 else length(st)
       }, numeric(1))
@@ -718,8 +792,8 @@ evaluate_condped_simulation <- function(
     resolved <- asset$resolved
     if (!is.null(cp)) {
       if (!is.null(cp$p)) {
-        pv <- vapply(sids, function(s) {
-          p <- cp$p[[s]]
+        pv <- vapply(est_sid, function(es) {
+          p <- get0(cp$p, es)
           if (is.null(p) || length(p) == 0L || !is.finite(p)) {
             NA_real_
           } else {
@@ -731,7 +805,7 @@ evaluate_condped_simulation <- function(
       jj <- pp <- rr <- rep(NA_real_, n_t)
       for (k in seq_len(n_t)) {
         s <- sids[[k]]
-        est_set <- if (!is.null(cp$sets)) cp$sets[[s]] else NULL
+        est_set <- if (!is.null(cp$sets)) get0(cp$sets, est_sid[[k]])
         if (is.null(est_set)) est_set <- character()
         t_set <- truth$candidate_traits[[s]]
         if (is.null(t_set)) t_set <- character()
@@ -744,9 +818,9 @@ evaluate_condped_simulation <- function(
       a_prec <- .mean_or_na(pp)
       a_rec <- .mean_or_na(rr)
       if (!is.null(cp$direction) && !is.null(truth$effect_direction)) {
-        dv <- vapply(sids, function(s) {
-          td <- truth$effect_direction[[s]]
-          ed <- cp$direction[[s]]
+        dv <- vapply(seq_len(n_t), function(k) {
+          td <- truth$effect_direction[[sids[[k]]]]
+          ed <- get0(cp$direction, est_sid[[k]])
           if (is.null(td) || is.null(ed)) {
             NA_real_
           } else {
@@ -756,12 +830,37 @@ evaluate_condped_simulation <- function(
         a_dir <- .mean_or_na(dv)
       }
     }
-    if (!is.null(lead)) a_lead_infl <- mean(widths_of(lead) - t_breadths)
+    # fall back to ASSET-side direction representations (derived from
+    # the real positive/negative subsets) when the CondPED entry has
+    # none; resolved signals first, then the marginal lead
+    if (is.na(a_dir) && !is.null(truth$effect_direction)) {
+      for (entry in list(list(e = resolved, key = "signal"),
+                         list(e = lead, key = "locus"))) {
+        ent <- entry$e
+        if (is.null(ent) || is.null(ent$direction)) next
+        ids <- if (entry$key == "signal") est_sid else est_lid
+        dv <- vapply(seq_len(n_t), function(k) {
+          td <- truth$effect_direction[[sids[[k]]]]
+          ed <- get0(ent$direction, ids[[k]])
+          if (is.null(td) || is.null(ed)) {
+            NA_real_
+          } else {
+            as.numeric(unname(ed) == unname(td))
+          }
+        }, numeric(1))
+        a_dir <- .mean_or_na(dv)
+        if (!is.na(a_dir)) break
+      }
+    }
+    if (!is.null(lead)) {
+      a_lead_infl <- mean(widths_of(lead, "locus") - t_breadths)
+    }
     if (!is.null(resolved)) {
-      a_res_infl <- mean(widths_of(resolved) - t_breadths)
+      a_res_infl <- mean(widths_of(resolved, "signal") - t_breadths)
     }
     if (!is.null(lead) && !is.null(cp)) {
-      a_pseudo <- mean(widths_of(lead) >= 2 & widths_of(cp) <= 1)
+      a_pseudo <- mean(widths_of(lead, "locus") >= 2 &
+                         widths_of(cp, "signal") <= 1)
     }
   }
 
@@ -775,6 +874,11 @@ evaluate_condped_simulation <- function(
     representative_to_causal_r2 = mean_r2,
     representative_to_causal_distance = mean_dist,
     residual_local_false_positive_rate = local_fpr,
+    signal_resolution_attempt_rate = attempt_rate,
+    conditional_signal_count_exact_recovery = cond_count_exact,
+    conditional_secondary_signal_power = cond_sec_power,
+    conditional_missed_signal_rate = cond_missed,
+    truth_locus_split_rate = split_rate,
     type1_omnibus = type1,
     power_omnibus = power,
     beta_bias = .mean_or_na(b_bias),
@@ -1343,7 +1447,7 @@ evaluate_condped_simulation <- function(
     } else {
       list()
     }
-    srow$n <- nrow(idx)
+    srow$n <- length(idx)
     mrow <- srow
     for (met in metrics) {
       x <- df[[met]][idx]
@@ -1351,6 +1455,8 @@ evaluate_condped_simulation <- function(
       n <- length(x)
       if (n == 0L) {
         srow[[met]] <- NA_real_
+        srow[[paste0(met, "_ci_lo")]] <- NA_real_
+        srow[[paste0(met, "_ci_hi")]] <- NA_real_
         mrow[[met]] <- NA_real_
         next
       }

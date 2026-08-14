@@ -80,3 +80,5 @@ data/*.RData
 # Temporary analysis scripts
 scratch/
 temp/
+inst/validation/output/
+inst/validation/output/

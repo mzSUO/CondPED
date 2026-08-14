@@ -775,14 +775,16 @@ test_that("ASSET metrics are NA without estimates$asset and computed with it", {
   expect_true(all(asset_metrics %in% names(r0)))
   expect_true(all(is.na(r0[asset_metrics])))
 
+  # asset lists are estimate-side objects: lead keyed by estimated locus
+  # id, resolved/condped keyed by estimated signal id (never truth ids)
   est$asset <- list(
-    lead = list(sets = list(S1 = c("T1", "T2", "T3")),
-                p = c(S1 = 0.001)),
-    resolved = list(sets = list(S1 = c("T1", "T2")),
-                    p = c(S1 = 0.001)),
-    condped = list(sets = list(S1 = c("T1", "T2")),
-                   p = c(S1 = 0.001),
-                   direction = c(S1 = "concordant"))
+    lead = list(sets = list("1:900-1100" = c("T1", "T2", "T3")),
+                p = c("1:900-1100" = 0.001)),
+    resolved = list(sets = list(E1 = c("T1", "T2")),
+                    p = c(E1 = 0.001)),
+    condped = list(sets = list(E1 = c("T1", "T2")),
+                   p = c(E1 = 0.001),
+                   direction = c(E1 = "concordant"))
   )
   r <- row_of(truth, est)
   expect_identical(r$asset_power, 1)
@@ -826,4 +828,73 @@ test_that("effect_breadth_bias and direction_recovery follow the frozen rule", {
   est2$beta$beta <- c(0.9, 0.6)
   r3 <- row_of(truth2, est2)
   expect_identical(r3$direction_recovery, 0)
+})
+
+# ---- ASSET direction schema (Stage 7.1 C) --------------------------------------
+
+test_that("ASSET pos/neg subsets map onto the frozen direction vocabulary", {
+  d <- CondPED:::.direction_from_subsets
+  expect_identical(d(NULL, NULL), "not_applicable")
+  expect_identical(d(character(), character()), "not_applicable")
+  expect_identical(d("T1", NULL), "single_trait")
+  expect_identical(d(NULL, "T2"), "single_trait")
+  expect_identical(d(c("T1", "T2"), NULL), "concordant")
+  expect_identical(d(NULL, c("T1", "T2")), "concordant")
+  expect_identical(d("T1", "T2"), "antagonistic")
+  expect_identical(d(c("T1", "T3"), "T2"), "mixed")
+})
+
+test_that("asset_direction_recovery is finite via ASSET-side direction fallback", {
+  truth <- mk_truth(c("T1", "T2"), direction = "antagonistic")
+  est <- mk_est(c("T1", "T2"))
+  # condped entry carries no direction; the resolved ASSET entry
+  # carries a direction derived from its real pos/neg subsets
+  est$asset <- list(
+    condped = list(sets = list(E1 = c("T1", "T2")),
+                   p = c(E1 = NA_real_), direction = NULL),
+    resolved = list(sets = list(E1 = c("T1", "T2")),
+                    p = c(E1 = 0.001),
+                    direction = c(E1 = "antagonistic"))
+  )
+  r <- row_of(truth, est)
+  expect_identical(r$asset_direction_recovery, 1)
+  # wrong derived direction -> 0
+  est$asset$resolved$direction <- c(E1 = "concordant")
+  r2 <- row_of(truth, est)
+  expect_identical(r2$asset_direction_recovery, 0)
+})
+
+# ---- Stage 7.2: conditional_recovery empty denominator + locus split ------------
+
+test_that("conditional_recovery is NA (not 0) when no candidate-exact pair", {
+  truth <- mk_truth(c("T1", "T2"), reps = list(c("T1", "T2")))
+  est <- mk_est(c("T1"))            # candidate set NOT exactly recovered
+  r <- row_of(truth, est)
+  expect_identical(r$candidate_exact_recovery, 0)
+  expect_true(is.na(r$conditional_recovery))
+})
+
+test_that("truth_locus_split_rate counts truth loci mapped to >1 est locus", {
+  truth <- mk_truth(c("T1"))
+  # two estimated loci, both overlapping the single truth locus
+  est <- mk_est(c("T1"))
+  est$signals <- rbind(
+    data.frame(locus_id = "1:900-1000", signal_id = "E1", signal_order = 1L,
+               representative_snp = "M1", position = 950,
+               stringsAsFactors = FALSE),
+    data.frame(locus_id = "1:1000-1100", signal_id = "E2", signal_order = 1L,
+               representative_snp = "M2", position = 1050,
+               stringsAsFactors = FALSE)
+  )
+  r <- row_of(truth, est)
+  expect_identical(r$truth_locus_split_rate, 1)
+  # single estimated locus -> 0
+  est1 <- mk_est(c("T1"))
+  r1 <- row_of(truth, est1)
+  expect_identical(r1$truth_locus_split_rate, 0)
+  # no detected locus -> NA
+  est0 <- mk_est(character())
+  est0$signals <- est0$signals[0, , drop = FALSE]
+  r0 <- row_of(truth, est0)
+  expect_true(is.na(r0$truth_locus_split_rate))
 })

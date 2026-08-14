@@ -8,59 +8,55 @@ run_condped_simulation(
   grid,
   reps,
   out_dir,
-  master_seed = 20260727L,
+  master_seed = 20260804L,
   workers = 1L,
   backend = c("sequential", "parallel"),
   resume = TRUE,
   overwrite = FALSE,
   save_data = FALSE,
-  save_fit = TRUE,
+  save_fit = FALSE,
   fail_policy = c("save_unstable", "stop"),
   progress = interactive()
 )
 }
 \arguments{
 \item{grid}{Data.frame describing the scenario grid (one row per
-scenario).}
+scenario); see \code{\link[=.pilot_grid]{.pilot_grid()}} for the formal columns.}
 
 \item{reps}{Integer; number of replicates per scenario.}
 
 \item{out_dir}{Output directory for per-replicate RDS files.}
 
-\item{master_seed}{Master random seed; replicates use
-\code{RNGkind("L'Ecuyer-CMRG")} streams derived from it.}
+\item{master_seed}{Master random seed.}
 
 \item{workers}{Integer; number of parallel workers.}
 
-\item{backend}{Execution backend: \code{"sequential"} or \code{"parallel"}.}
+\item{backend}{Execution backend: \code{"sequential"} or \code{"parallel"}
+(fork-based; on Windows it falls back to sequential with a
+warning).}
 
-\item{resume}{Logical; skip replicates whose output files already exist.}
+\item{resume}{Logical; skip replicates whose output files already
+exist with \code{status = "ok"}.}
 
-\item{overwrite}{Logical; overwrite existing output files.}
+\item{overwrite}{Logical; rerun everything, including failed
+replicates.}
 
-\item{save_data}{Logical; also save the simulated data.}
+\item{save_data}{Logical; also save the simulated \code{G}/\code{Y}.}
 
-\item{save_fit}{Logical; save the fitted objects.}
+\item{save_fit}{Logical; save the fitted null object.}
 
-\item{fail_policy}{\code{"save_unstable"} saves failed replicates with status
-information; \code{"stop"} aborts on the first failure.}
+\item{fail_policy}{\code{"save_unstable"} saves failed replicates with
+status information; \code{"stop"} aborts on the first failure.}
 
 \item{progress}{Logical; show a progress indicator.}
 }
 \value{
 A list with components \code{manifest} (data.frame), \code{completed},
-\code{failed}, \code{skipped}, \code{elapsed} and \code{status}, as specified in the
-interface contract.
+\code{failed}, \code{skipped}, \code{elapsed} and \code{status}.
 }
 \description{
-Executes a grid of simulation scenarios with reproducible random seeds.
-Each replicate is uniquely determined by \verb{(master_seed, scenario_id, rep_id)}; parallel scheduling never changes the random stream. Failed
-replicates are saved with their status instead of being silently
-dropped.
+Executes a grid of simulation scenarios with reproducible random
+seeds. Each replicate is uniquely determined by \verb{(master_seed, scenario_id, rep_id)}; parallel scheduling never changes the random
+stream. Failed replicates are saved with their status instead of
+being silently dropped.
 }
-\section{Status}{
-
-S0 skeleton: this function is an API stub and currently throws an error of
-class \code{condped_not_implemented}.
-}
-

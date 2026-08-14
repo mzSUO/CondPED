@@ -388,3 +388,8 @@
   omnibus$marker_id <- as.character(omnibus$marker_id)
   omnibus
 }
+
+#' Null-coalescing operator
+#' @keywords internal
+#' @noRd
+`%||%` <- function(a, b) if (is.null(a)) b else a
