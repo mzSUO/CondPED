@@ -9,3 +9,4 @@
 ^state\.md$
 ^inst/validation/output$
 ^SERVER_CODEX_RULES\.md$
+^inst/formal-simu/output$

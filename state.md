@@ -5,7 +5,9 @@
 - 分支 dev/hierarchical；统计定义已冻结（Methods > Interface Contract > Runbook > 代码）。
 - 工作规范：见 AGENTS.md（已合并 SERVER_CODEX_RULES.md 全部规则 + 三条附加条款：
   批量模拟必须经 run_sim.sh；禁止修改 production code / simulation registry /
-  evaluator；freeze 参数以 inst/formal-simu/05 模拟20260825.md 为准）。
+  evaluator；Stage 8 起正式模拟脚本放 inst/formal-simu/ 根目录、结果放
+  inst/formal-simu/output/<阶段名>/（已加入 .gitignore，只 commit 脚本与汇总报告）；
+  freeze 参数以 inst/formal-simu/05 模拟20260825.md 为准）。
 - 测试：devtools::test() 1513 PASS / 0 FAIL / 0 WARN / 1 SKIP；
   devtools::check 0 errors / 0 warnings。
 

@@ -53,7 +53,8 @@ R/                  # 包源码（统计方法 + runner + evaluator）
 src/                # Rcpp/Armadillo kernel（gls_blocks.cpp + RcppExports）
 tests/testthat/     # testthat 第 3 版
 inst/validation/    # 诊断 / 校准 / pilot 脚本（output/ 为其输出目录，gitignored）
-inst/formal-simu/   # 正式模拟设计文档与正式批量脚本
+inst/formal-simu/   # 正式模拟设计文档与批量脚本；结果写入其 output/<阶段名>/
+                    # 子目录（gitignored，不进 git）
 man/                # roxygen2 生成，勿手改
 run_sim.sh          # 正式批量模拟的唯一启动入口
 SERVER_CODEX_RULES.md  # 服务器执行规则（已并入本文件 §4）
@@ -77,9 +78,11 @@ SERVER_CODEX_RULES.md  # 服务器执行规则（已并入本文件 §4）
 1. **正式批量模拟必须通过 `bash run_sim.sh <标签> <脚本>` 启动**，
    禁止直接 `Rscript` 跑批量任务。
 2. **任何情况下不修改 production code、simulation registry、
-   evaluator**；只能新增 `inst/validation/` 与 `inst/formal-simu/` 下的
-   脚本和 `output/` 下的结果。（历史 stage 的代码修改均为当时用户明确
-   授权，不构成先例。）
+   evaluator**；Stage 8 起所有正式模拟相关文件一律放在
+   `inst/formal-simu/` 下——脚本在 `inst/formal-simu/` 根目录
+   （如 `run-stage81.R`），结果在 `inst/formal-simu/output/<阶段名>/`
+   子目录（结果不进 git，只 commit 脚本和汇总报告）。
+   （历史 stage 的代码修改均为当时用户明确授权，不构成先例。）
 3. **正式模拟的 freeze 方案文档是 `inst/formal-simu/05 模拟20260825.md`，
    所有参数以它为准。**
 
