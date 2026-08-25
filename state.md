@@ -36,3 +36,20 @@
 
 - Stage 8：正式 500-replicate simulation（按 05 模拟20260825.md 冻结参数，
   经 run_sim.sh 启动）。
+
+## Stage 8.1 pilot（2026-08-26，已完成）
+
+- `inst/formal-simu/run-stage81.R`：12 个主场景（I-0/I-1/I-2、II-A A1–A4、
+  II-B R1/R3、E1/E2/E3）× R=20 = 240 reps，经 `bash run_sim.sh stage81 ...`
+  启动；三 pipeline 严格配对（runner paired 模式，deterministic seed）；
+  per-rep RDS checkpoint；失败自动重试一次（本次 0 失败，retry 未触发）。
+- run_sim.sh 已修复为本机可用的 `--user` scope 版本（原 sudo/--wait/Nice
+  与本机 systemd 不兼容，且 sudo 路径会产生 root -owned 输出与 PATH 缺失）。
+- pilot 结果：240/240 ok；10 项 freeze 检查（§1.62）全部 PASS
+  （realized LD 0.300；fixed-dirs 场景 per-active-trait realized PVE 0.0200；
+  Sigma_G^bg PSD；truth rho map / Rep/Irr truth 正常；ASSET 适配器
+  53/53 运行全 ok，7 个 no-locus rep 属 discovery 结果；resume/probe
+  再生一致；0 numerical failure）。主 grid wall 2117s，峰值 RSS 107MB。
+- 报告：inst/formal-simu/stage81-pilot-report.md（提交）；
+  原始结果在 inst/formal-simu/output/stage81/（gitignored，不提交）。
+- 满足 freeze 硬性条件（0 numerical failure），可进入正式 500-rep。
