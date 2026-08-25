@@ -64,7 +64,7 @@ and \code{reltol} (default 1e-8) are honoured.}
 
 \item{compute_gamma}{Logical; compute the global conditional projection
 coefficients from \eqn{\widehat\Sigma_P = \widehat\Sigma_G +
-\widehat\Sigma_E} (computed once, fixed for the whole pipeline).}
+  \widehat\Sigma_E} (computed once, fixed for the whole pipeline).}
 
 \item{return_rotation}{Logical; return the rotation object (eigenvectors,
 eigenvalues, rotated data, per-coordinate inverse covariances and the

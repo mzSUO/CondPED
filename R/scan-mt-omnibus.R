@@ -94,8 +94,19 @@ scan_mt_omnibus <- function(
   AM_arr <- .precompute_AM(rot)      # m x qm x n, coordinate j = A_j M_j
   Ar <- .precompute_Ar(rot)          # m x n,   column j = A_j r_tilde_j
 
-  # Result containers
-  omnibus <- vector("list", p)
+  # Result containers: column vectors accumulated per marker (one data.frame
+  # built at the end; per-marker data.frame() + giant rbind dominated the R
+  # bookkeeping time after the kernel migration)
+  om_maf <- rep(NA_real_, p)
+  om_gvar <- rep(NA_real_, p)
+  om_neff <- rep(NA_integer_, p)
+  om_Q <- rep(NA_real_, p)
+  om_df <- rep(0L, p)
+  om_p <- rep(NA_real_, p)
+  om_rankJ <- rep(0L, p)
+  om_condJ <- rep(NA_real_, p)
+  om_status <- character(p)
+  om_filter <- character(p)
   if (isTRUE(return_score)) score_list <- vector("list", p)
   if (isTRUE(return_effects)) effects_list <- vector("list", p)
 
@@ -124,11 +135,14 @@ scan_mt_omnibus <- function(
       }
     }
     X_tilde <- crossprod(rot$U, G_imp)  # n x k
+    # C++ kernel computes the GLS block for every marker in the chunk at
+    # once (identical numerics to the R reference .gls_block_components_r);
+    # filtered markers simply never read their block.
+    blocks <- .gls_blocks_chunk(X_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol)
 
     for (s in seq_along(idx)) {
       marker_id <- ids_chunk[s]
       x <- G_chunk[, s]
-      x_tilde <- X_tilde[, s]
 
       # Filtering based on the original dosage vector
       n_eff <- sum(!is.na(x))
@@ -157,20 +171,12 @@ scan_mt_omnibus <- function(
 
       if (!passed) {
         n_filtered <- n_filtered + 1L
-        omnibus[[idx[s]]] <- data.frame(
-          marker_id = marker_id,
-          maf = maf,
-          genotype_variance = genotype_variance,
-          n_eff = n_eff,
-          Q = NA_real_,
-          df = 0L,
-          p_value = NA_real_,
-          rank_J = 0L,
-          condition_J = Inf,
-          status = "filtered",
-          filter_reason = filter_reason,
-          stringsAsFactors = FALSE
-        )
+        om_maf[idx[s]] <- maf
+        om_gvar[idx[s]] <- genotype_variance
+        om_neff[idx[s]] <- n_eff
+        om_condJ[idx[s]] <- Inf
+        om_status[idx[s]] <- "filtered"
+        om_filter[idx[s]] <- filter_reason
         if (isTRUE(return_score)) score_list[[idx[s]]] <- NA_real_
         if (isTRUE(return_effects)) {
           effects_list[[idx[s]]] <- .format_one_effect(
@@ -182,7 +188,7 @@ scan_mt_omnibus <- function(
       }
 
       n_tested <- n_tested + 1L
-      block <- .gls_block_components(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol)
+      block <- blocks[[s]]
 
       # Single source for the Q/df/p/status convention: .q_from_block()
       # (shared with the conditional scan).
@@ -195,20 +201,16 @@ scan_mt_omnibus <- function(
         n_rank_deficient <- n_rank_deficient + 1L
       }
 
-      omnibus[[idx[s]]] <- data.frame(
-        marker_id = marker_id,
-        maf = maf,
-        genotype_variance = genotype_variance,
-        n_eff = n_eff,
-        Q = Q,
-        df = as.integer(df),
-        p_value = p_value,
-        rank_J = as.integer(block$rank),
-        condition_J = block$condition,
-        status = status,
-        filter_reason = filter_reason,
-        stringsAsFactors = FALSE
-      )
+      om_maf[idx[s]] <- maf
+      om_gvar[idx[s]] <- genotype_variance
+      om_neff[idx[s]] <- n_eff
+      om_Q[idx[s]] <- Q
+      om_df[idx[s]] <- as.integer(df)
+      om_p[idx[s]] <- p_value
+      om_rankJ[idx[s]] <- as.integer(block$rank)
+      om_condJ[idx[s]] <- block$condition
+      om_status[idx[s]] <- status
+      om_filter[idx[s]] <- filter_reason
       if (isTRUE(return_score)) score_list[[idx[s]]] <- block$U
       if (isTRUE(return_effects)) {
         effects_list[[idx[s]]] <- .format_one_effect(
@@ -219,8 +221,20 @@ scan_mt_omnibus <- function(
     }
   }
 
-  omnibus_df <- do.call(rbind, omnibus)
-  rownames(omnibus_df) <- NULL
+  omnibus_df <- data.frame(
+    marker_id = marker_ids,
+    maf = om_maf,
+    genotype_variance = om_gvar,
+    n_eff = om_neff,
+    Q = om_Q,
+    df = om_df,
+    p_value = om_p,
+    rank_J = om_rankJ,
+    condition_J = om_condJ,
+    status = om_status,
+    filter_reason = om_filter,
+    stringsAsFactors = FALSE
+  )
 
   out <- list(
     omnibus = omnibus_df,
@@ -290,7 +304,11 @@ scan_mt_omnibus <- function(
   Ar
 }
 
-#' Compute the GLS score/information block for one rotated marker
+#' Compute the GLS score/information block for one rotated marker (R reference)
+#'
+#' Reference R implementation of the frozen per-marker GLS block formulas,
+#' kept for golden-standard regression testing of the Rcpp kernel
+#' (`gls_blocks_cpp()`; see [`.gls_block_components()`]).
 #'
 #' Implements \eqn{U_l = \sum_j \widetilde x_{lj} A_j \widetilde r_j} and
 #' \eqn{J_l = \sum_j \widetilde x_{lj}^2 A_j -
@@ -306,7 +324,7 @@ scan_mt_omnibus <- function(
 #' @return A list with components `U`, `J`, `J_inv`, `rank`, `condition`,
 #'   `status`, `beta`.
 #' @keywords internal
-.gls_block_components <- function(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol) {
+.gls_block_components_r <- function(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol) {
   m <- nrow(Ar)
   qm <- ncol(AM_arr)
   n <- length(x_tilde)
@@ -330,6 +348,24 @@ scan_mt_omnibus <- function(
   J <- J1 - C %*% G_inv %*% t(C)
 
   inv <- .safe_inverse(J, tol = rank_tol, symmetric = TRUE)
+
+  # Deterministic, scale-aware zero floor. J is produced by cancellation
+  # between J1 and the projection term C G_inv C'; when the marker lies in
+  # the span of the fixed effects the true J is zero and the computed
+  # entries are pure rounding noise of magnitude O(eps * scale(J1)).
+  # Judging the rank of such a noise matrix relative to its own largest
+  # eigenvalue is BLAS-dependent (non-portable), so force rank 0 whenever
+  # the whole spectrum is below rank_tol * scale(J1).
+  J1_scale <- max(abs(diag(J1)))
+  e_max <- max(abs(inv$eigenvalues))
+  if (J1_scale > 0 && !is.na(e_max) && e_max <= rank_tol * J1_scale) {
+    inv$inverse <- matrix(0, m, m)
+    inv$rank <- 0L
+    inv$condition_number <- Inf
+    inv$used_pseudoinverse <- TRUE
+    inv$status <- "rank_deficient"
+  }
+
   rank <- inv$rank
   condition <- inv$condition_number
 
@@ -353,6 +389,60 @@ scan_mt_omnibus <- function(
     status = inv$status,
     beta = beta
   )
+}
+
+#' Compute GLS score/information blocks for a chunk of rotated markers
+#'
+#' Rcpp/Armadillo kernel (`gls_blocks_cpp()`) wrapper. Replicates the R
+#' reference [`.gls_block_components_r()`] exactly, including the frozen
+#' rank/generalised-inverse rule (relative tolerance, no arma::pinv
+#' defaults) and the Stage-7.3.5 scale-aware zero floor.
+#'
+#' @param X_tilde `n x k` rotated dosage matrix for one chunk.
+#' @param AM_arr,Ar,A_arr,G_inv,rank_tol See [`.gls_block_components_r()`].
+#' @return A length-`k` list of per-marker block lists with components
+#'   `U`, `J`, `J_inv`, `rank`, `condition`, `status`, `beta`.
+#' @keywords internal
+.gls_blocks_chunk <- function(X_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol) {
+  # NB: C++ parameter order is (X_tilde, A_arr, AM_arr, Ar, G_inv, rank_tol)
+  res <- gls_blocks_cpp(X_tilde, A_arr, AM_arr, Ar, G_inv, rank_tol)
+  k <- ncol(X_tilde)
+  m <- nrow(Ar)
+  status_map <- c("ok", "rank_deficient", "failed")
+  lapply(seq_len(k), function(s) {
+    st <- status_map[res$status[s] + 1L]
+    ## NB: R drops dims when slicing 1x1xk cubes; rebuild m x m matrices
+    Jm <- matrix(res$J[, , s], m, m)
+    if (st == "failed") {
+      list(
+        U = res$U[, s], J = Jm,
+        J_inv = matrix(NA_real_, m, m),
+        rank = 0L, condition = Inf, status = "failed",
+        beta = rep(NA_real_, m)
+      )
+    } else {
+      list(
+        U = res$U[, s], J = Jm,
+        J_inv = matrix(res$J_inv[, , s], m, m),
+        rank = as.integer(res$rank[s]), condition = res$condition[s],
+        status = st, beta = res$beta[, s]
+      )
+    }
+  })
+}
+
+#' Compute the GLS score/information block for one rotated marker
+#'
+#' Single-marker view of the Rcpp kernel (see [`.gls_blocks_chunk()`]);
+#' numerically identical to the R reference [`.gls_block_components_r()`].
+#'
+#' @inheritParams .gls_block_components_r
+#' @return A list with components `U`, `J`, `J_inv`, `rank`, `condition`,
+#'   `status`, `beta`.
+#' @keywords internal
+.gls_block_components <- function(x_tilde, AM_arr, Ar, A_arr, G_inv, rank_tol) {
+  .gls_blocks_chunk(matrix(x_tilde, ncol = 1L), AM_arr, Ar, A_arr, G_inv,
+                    rank_tol)[[1L]]
 }
 
 #' Validate a null fit object for S3

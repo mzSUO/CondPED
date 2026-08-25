@@ -511,6 +511,9 @@ fit_mt_null <- function(
   fac_E <- .logchol_unpack_factor(theta[ncp + seq_len(ncp)], m, chol_floor)
   Sigma_G <- fac_G$Sigma
   Sigma_E <- fac_E$Sigma
+  # extreme trial points can overflow the exp() inside the log-Cholesky
+  # unpack, yielding non-finite covariance entries; treat as illegal
+  if (any(!is.finite(Sigma_G)) || any(!is.finite(Sigma_E))) return(bad)
 
   n <- nrow(Y_tilde)
   q <- ncol(W_tilde)
@@ -535,6 +538,7 @@ fit_mt_null <- function(
     XtVinvy <- XtVinvy + as.vector(outer(Ay, w_j))
   }
 
+  if (any(!is.finite(XtVinvX)) || any(!is.finite(XtVinvy))) return(bad)
   inv <- .safe_inverse(XtVinvX)
   if (inv$status == "failed" || inv$rank < q * m) return(bad)
   G_x <- inv$inverse

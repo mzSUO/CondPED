@@ -312,3 +312,16 @@ test_that("truth uses only the unified v1.0 schema fields", {
                      "conditional_profile", "effect_magnitude")
                    %in% names(s$truth)))
 })
+
+test_that("three_linked_trait_specific generates 3 clustered trait-specific signals", {
+  s <- sim("signal_resolution", "three_linked_trait_specific", seed = 21)
+  expect_true(isTRUE(s$status$ok))
+  expect_identical(nrow(s$truth$signals), 3L)
+  expect_identical(nrow(s$truth$B_Q), 3L)
+  # contiguous causal cluster (Stage 7.4 A geometry), 1 kb apart
+  expect_equal(diff(s$causal_index), c(1L, 1L))
+  # per-trait-specific candidate sets
+  expect_identical(unname(s$truth$candidate_traits[[1]]), "Trait1")
+  expect_identical(unname(s$truth$candidate_traits[[2]]), "Trait2")
+  expect_identical(unname(s$truth$candidate_traits[[3]]), "Trait3")
+})

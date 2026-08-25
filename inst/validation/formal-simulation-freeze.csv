@@ -1,7 +1,7 @@
 experiment,scenario,analysis_mode,comparison_pipeline,locus_pve,secondary_signal_pve,target_r2,freeze_note
 signal_resolution,null,full,condped_full,0.01,0.005,,"type1 calibrated at 0.048; unchanged"
 signal_resolution,single_multi_trait,full,condped_full,0.015,0.005,,"Stage 7.1 B1: detection 0.80 in window. Boundary sensitivity recorded: truth rho 0.0588 vs tau 0.10 makes Rep recovery intrinsically unstable (Stage 7.2 D); rho/Rep truth unchanged by design"
-signal_resolution,two_linked_trait_specific,full,condped_full,0.02,0.0075,,"Stage 7.1 B1: only fully-in-window set (det 0.77/exact 0.52/sec 0.61/extra 0.12)"
+signal_resolution,two_linked_trait_specific,full,condped_full,0.02,0.0175,,"Stage 7.4: causal geometry fixed (causals clustered 1kb apart, were 49kb at region ends vs 5kb window); secondary PVE recalibrated 0.0075->0.0175 for oracle-primary power 0.79 at r2=0.3 (Stage 7.4 C grid); three-layer: detection 0.88, split 0.02, secondary recovery 0.75 (corrected both-matched metric), oracle-primary 0.85"
 signal_resolution,two_heterogeneous,full,condped_full,0.02,0.01,,"Stage 7.1 B1: only fully-in-window set (det 0.93/exact 0.43/sec 0.43/extra 0.03)"
 trait_representation,trait_specific,signal_oracle,condped_full,0.01,0.005,,"B4: conservative but functioning; unchanged"
 trait_representation,two_trait_concordant,signal_oracle,condped_full,0.01,0.005,,"B4: unchanged"
@@ -12,5 +12,5 @@ trait_representation,partially_representable,signal_trait_oracle,condped_full,0.
 trait_representation,strongly_nonredundant,signal_trait_oracle,condped_full,0.01,0.005,,"unchanged"
 end_to_end,single_highly_representable,full,paired,0.02,0.005,,"Stage 7.2 sanity: rep_exact 0.867->1.000, split 0.033->0, extra 0.056"
 end_to_end,single_nonredundant,full,paired,0.02,0.005,,"Stage 7.1 B3: candidate exact 0.53 off floor; Rep|cand=1.00; truth rho map invariant"
-end_to_end,mixed_multisignal,full,paired,0.02,0.0075,,"CALIBRATION UNRESOLVED (Stage 7.3 A): extra_signal_rate 0.33 > 0.15 at both baseline and calibrated settings; source decomposition shows 84% novel-locus genome-wide FDR signals, not locus-splitting or conditional FPs; PVE recalibration cannot address this and was not escalated"
+end_to_end,mixed_multisignal,full,paired,0.02,0.0175,,"Stage 7.4 G: geometry fixed + secondary PVE recalibrated to 0.0175; marker FDP 0.047 (consistent with BH 0.05), but signal FDP 0.503 with 92.7% novel-locus genome-wide FDR signals - confirms Stage 7.3 A conclusion that extra signals are a discovery-layer FDR phenomenon, not addressable by PVE calibration"
 controlled_benchmark,ldmix_benchmark,predefined_locus,lead_asset_vs_resolved_asset,0.01-0.02,0.0056-0.02,0.3-0.7,"Stage 7.3 B: mechanistic benchmark only (fixed locus, no discovery gating); NOT part of formal Simulation III and not interpretable as genome-wide discovery performance"

@@ -378,3 +378,23 @@ test_that("v1.0 interface fields: Sigma_P_ref, trait_names, individual_ids", {
   expect_true(is.finite(fit$diagnostics$min_eigen_Sigma_P_ref))
   expect_true(is.finite(fit$diagnostics$condition_Sigma_P_ref))
 })
+
+test_that("REML objective degrades gracefully at overflowing trial points", {
+  # Stage 7.4 H: BFGS trial points can overflow exp() inside the
+  # log-Cholesky unpack; the objective must return the `bad` sentinel
+  # (value -1e10) instead of erroring from .safe_inverse on NA input.
+  set.seed(22)
+  n <- 30; m <- 2
+  Y <- matrix(rnorm(n * m), n, m)
+  K <- CondPED:::.make_grm(matrix(rnorm(n * 20), n, 20))
+  eig_K <- eigen((K + t(K)) / 2, symmetric = TRUE)
+  lambda <- pmax(eig_K$values, 0)
+  Y_tilde <- crossprod(eig_K$vectors, Y)
+  W_tilde <- crossprod(eig_K$vectors, cbind(1, seq_len(n)))
+  ncp <- m * (m + 1L) / 2L
+  theta <- rep(800, 2L * ncp)   # exp overflow territory
+  vg <- CondPED:::.reml_value_grad(theta, m = m, lambda = lambda,
+                                   Y_tilde = Y_tilde, W_tilde = W_tilde)
+  expect_identical(vg$value, -1e10)
+  expect_true(all(vg$gradient == 0))
+})

@@ -22,10 +22,7 @@ A list with components \code{U}, \code{J}, \code{J_inv}, \code{rank}, \code{cond
 \code{status}, \code{beta}.
 }
 \description{
-Implements \eqn{U_l = \sum_j \widetilde x_{lj} A_j \widetilde r_j} and
-\eqn{J_l = \sum_j \widetilde x_{lj}^2 A_j -
-  (\sum_j \widetilde x_{lj} A_j M_j) G
-  (\sum_j \widetilde x_{lj} M_j^\top A_j)}.
-The generalised inverse of \eqn{J_l} uses explicit rank tolerance.
+Single-marker view of the Rcpp kernel (see \code{\link[=.gls_blocks_chunk]{.gls_blocks_chunk()}});
+numerically identical to the R reference \code{\link[=.gls_block_components_r]{.gls_block_components_r()}}.
 }
 \keyword{internal}

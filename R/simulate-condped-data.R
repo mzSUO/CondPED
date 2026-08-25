@@ -255,9 +255,19 @@ simulate_condped_data <- function(
                            r2_target)
   G[, region_cols] <- region$G
 
-  # causal markers: evenly spaced inside the focal region
-  causal_cols <- region_cols[round(seq(1, local_region_size,
-                                       length.out = max(q, 1L)))]
+  # causal markers: a single causal keeps the legacy placement (region
+  # start); two or more same-locus causals form a contiguous cluster at
+  # the region centre, so that same-locus signals lie inside one analysis
+  # window (adjacent markers are 1000 bp apart) instead of at opposite
+  # ends of the 50 kb region, 49 kb apart — geometrically incompatible
+  # with the window-based locus definition.
+  if (q <= 1L) {
+    causal_cols <- region_cols[round(seq(1, local_region_size,
+                                         length.out = max(q, 1L)))]
+  } else {
+    start_off <- floor((local_region_size - q) / 2) + 1L
+    causal_cols <- region_cols[start_off:(start_off + q - 1L)]
+  }
   causal_index <- if (q > 0L) causal_cols else integer()
   position <- seq_len(p) * 1000
   chromosome <- rep("chr1", p)
@@ -732,6 +742,15 @@ simulate_condped_data <- function(
         q = 2L, kind = "fixed_dirs", min_m = 2L, local_ld = "moderate",
         dirs = function(m) list(c(1, rep(0, m - 1L)),
                                 c(0, 1, rep(0, m - 2L)))
+      ),
+      # Stage 7.7 P5: three-signal scalability extension of
+      # two_linked_trait_specific (same per-trait-specific architecture,
+      # tertiary signal on Trait3); simulation-design addition only.
+      three_linked_trait_specific = list(
+        q = 3L, kind = "fixed_dirs", min_m = 3L, local_ld = "moderate",
+        dirs = function(m) list(c(1, rep(0, m - 1L)),
+                                c(0, 1, rep(0, m - 2L)),
+                                c(0, 0, 1, rep(0, m - 3L)))
       ),
       two_heterogeneous = list(
         q = 2L, kind = "fixed_dirs", min_m = 3L,
