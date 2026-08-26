@@ -51,7 +51,12 @@
 - 注：evaluator 的 conditional_effect_* 仅 single-signal 模式有定义，I-2
   报告 beta RMSE；I-1 marker FDP 0.071 略高于 0.05（相关检验下 BH 已知
   现象，已在报告中注明）。
-- run-manifest.md 至今不存在（Stage 8.1/8.2 均以 freeze 文档为准）。
+- 补救补建（2026-08-27）：新增 inst/formal-simu/run-manifest.md（freeze
+  参数 + Stage 8.1/8.2 运行记录）；stage82-summary.md 补两段文档——
+  direction_exact 定义（pattern-of-attributed-set；0.820 vs 试点 ~1.00
+  的差为指标口径差异，点估计符号准确率实为 1.000）与 I-2 oracle 漏斗
+  （oracle-causal-set 0.98 → oracle-primary M49 0.86 / M1 1.00 →
+  full 0.778）。不改任何结果数据。
 
 ## Stage 8.1 pilot（2026-08-26，已完成）
 

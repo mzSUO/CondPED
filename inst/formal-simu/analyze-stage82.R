@@ -195,6 +195,101 @@ ocs_df <- do.call(rbind, lapply(ocs, function(x) data.frame(
 cat(sprintf("oracle-causal-set diagnostic: %d reps, %.0fs\n", nrow(ocs_df),
             difftime(Sys.time(), t0, units = "secs")))
 
+## ---- oracle-primary on the same I-2 subset (completes the funnel) ----------
+op_rep <- function(f) {
+  o <- readRDS(f)
+  sim <- regen(o)
+  G <- sim$G
+  truth <- sim$truth
+  causals <- truth$causal_markers
+  fit <- fit_mt_null(sim$Y, K = sim$K_bg, control = list(maxit = 300L))
+  if (!isTRUE(fit$status$ok)) return(list(rep_id = o$rep_id, ok = FALSE))
+  tl <- as.data.frame(truth$loci)[1, ]
+  marker_ids <- colnames(G)
+  position <- position_of(G)
+  M_region <- sum(position >= tl$start & position <= tl$end) - 1L
+  X_C <- G[, causals[1], drop = FALSE]
+  proj <- CondPED:::.build_conditional_projection(fit, X_C)
+  cs <- CondPED:::.conditional_mt_scan(
+    proj, G[, causals[2], drop = FALSE], marker_ids = causals[2],
+    return_effects = FALSE)
+  list(rep_id = o$rep_id, ok = TRUE,
+       pass_Mregion = isTRUE(cs$conditional$p_value <= 0.05 / M_region),
+       pass_M1 = isTRUE(cs$conditional$p_value <= 0.05),
+       cond_Q = cs$conditional$Q, cond_p = cs$conditional$p_value,
+       cond_status = cs$conditional$status)
+}
+t0 <- Sys.time()
+if (.Platform$OS.type == "unix") {
+  opl <- parallel::mclapply(diag_files, op_rep, mc.cores = workers)
+} else {
+  opl <- lapply(diag_files, op_rep)
+}
+op_df <- do.call(rbind, lapply(opl, function(x) data.frame(
+  rep_id = x$rep_id, ok = x$ok,
+  pass_Mregion = if (x$ok) x$pass_Mregion else NA,
+  pass_M1 = if (x$ok) x$pass_M1 else NA,
+  cond_Q = if (x$ok) x$cond_Q else NA,
+  cond_status = if (x$ok) x$cond_status else NA_character_,
+  stringsAsFactors = FALSE)))
+write.csv(op_df, file.path(out_dir, "oracle_primary_i2.csv"),
+          row.names = FALSE)
+cat(sprintf("oracle-primary diagnostic: %d reps, %.0fs\n", nrow(op_df),
+            difftime(Sys.time(), t0, units = "secs")))
+
+## ---- direction metric comparison on I-2 (evaluator pattern vs point sign) --
+dir_rep <- function(f) {
+  o <- readRDS(f)
+  if (is.null(o) || !isTRUE(o$status$ok)) return(NULL)
+  sim <- regen(o)
+  G <- sim$G
+  truth <- sim$truth
+  position <- position_of(G)
+  est <- o$estimates$signals
+  mm <- CondPED:::.match_signals(
+    truth, list(signals = est, positions = position), G = G)
+  if (nrow(mm$matches) == 0L) {
+    return(list(rep_id = o$rep_id, pattern = NA_real_, sign_acc = NA_real_))
+  }
+  cand <- o$candidate_trait_estimates$candidate_sets
+  eff <- o$effect_estimates
+  pat <- numeric(nrow(mm$matches))
+  sgn <- numeric(nrow(mm$matches))
+  for (i in seq_len(nrow(mm$matches))) {
+    ti <- mm$matches$truth_signal_id[i]
+    ei <- mm$matches$est_signal_id[i]
+    t_dir <- truth$effect_direction[truth$signals$signal_id == ti]
+    e_cand <- cand[[ei]]
+    eb_rows <- eff[eff$signal_id == ei, ]
+    e_dir <- CondPED:::.direction_from_betas(
+      eb_rows$beta[eb_rows$trait %in% e_cand], length(e_cand))
+    pat[i] <- as.numeric(identical(unname(e_dir), unname(t_dir)))
+    ## point-estimate sign agreement on truth active (nonzero-beta) traits
+    tb <- truth$beta
+    active <- tb$beta[tb$signal_id == ti] != 0
+    tt <- tb$trait[tb$signal_id == ti][active]
+    tbv <- tb$beta[tb$signal_id == ti][active]
+    eb <- eff$beta[eff$signal_id == ei][match(tt, eff$trait[eff$signal_id == ei])]
+    sgn[i] <- if (any(is.na(eb))) NA_real_ else
+      as.numeric(all(sign(eb) == sign(tbv) | eb == 0))
+  }
+  list(rep_id = o$rep_id, pattern = mean(pat, na.rm = TRUE),
+       sign_acc = mean(sgn, na.rm = TRUE))
+}
+t0 <- Sys.time()
+if (.Platform$OS.type == "unix") {
+  dirl <- parallel::mclapply(i2_files, dir_rep, mc.cores = workers)
+} else {
+  dirl <- lapply(i2_files, dir_rep)
+}
+dirl <- dirl[!vapply(dirl, is.null, logical(1))]
+dir_df <- do.call(rbind, lapply(dirl, function(x) data.frame(
+  rep_id = x$rep_id, pattern = x$pattern, sign_acc = x$sign_acc)))
+write.csv(dir_df, file.path(out_dir, "direction_metrics_i2.csv"),
+          row.names = FALSE)
+cat(sprintf("direction metrics: %d reps, %.0fs\n", nrow(dir_df),
+            difftime(Sys.time(), t0, units = "secs")))
+
 ## ---- evaluator-side aggregates (all scenarios, no regen) --------------------
 ev_rows <- lapply(final$file[final$status == "ok"], function(f) {
   o <- readRDS(f)
@@ -295,6 +390,34 @@ lines <- c(
   sprintf("## Oracle-causal-set resolver diagnostic (I-2, reps 1-50): recovery = %.2f (%d/%d)",
           ocs_rate, sum(ocs_df$recovered, na.rm = TRUE),
           sum(!is.na(ocs_df$recovered))),
+  "",
+  "## Resolver funnel (I-2, reps 1-50, strictly paired)",
+  "",
+  sprintf("- oracle-causal-set recovery: %.2f (%d/%d)",
+          ocs_rate, sum(ocs_df$recovered, na.rm = TRUE),
+          sum(!is.na(ocs_df$recovered))),
+  sprintf("- oracle-primary recovery (true primary conditioned, secondary tested, within-locus Bonferroni M = region-1): %.2f (%d/%d); single-test M = 1: %.2f",
+          mean(op_df$pass_Mregion, na.rm = TRUE),
+          sum(op_df$pass_Mregion, na.rm = TRUE), sum(!is.na(op_df$pass_Mregion)),
+          mean(op_df$pass_M1, na.rm = TRUE)),
+  sprintf("- full end-to-end two-signal recovery (all 500 reps): %.3f",
+          i2m$full_recovery),
+  "",
+  "## Note on direction_exact",
+  "",
+  sprintf(paste0("direction_exact (0.820) is the frozen evaluator's direction ",
+    "PATTERN recovery: per matched signal pair, the estimated candidate-set ",
+    "direction pattern (0 candidates -> not_applicable; 1 -> single_trait; ",
+    ">= 2 same-sign -> concordant; 2 opposite -> antagonistic; >= 3 both ",
+    "signs -> mixed) must equal truth$effect_direction. For I-2 both truth ",
+    "signals are single_trait, so the metric fails exactly when the attributed ",
+    "candidate set is not exactly one trait - i.e. it is attribution-driven, ",
+    "not sign-flip-driven. The point-estimate sign accuracy on truth-active ",
+    "traits is %.3f over matched pairs (direction_metrics_i2.csv). The Stage ",
+    "7.7/7.8 pilot value ~1.00 used the latter sign-based metric on n = 50; ",
+    "the 0.820 here is the stricter pattern metric on n = 500, and it tracks ",
+    "attribution exact (0.814) as expected."),
+    mean(dir_df$sign_acc, na.rm = TRUE)),
   "",
   "## Extra-signal provenance (I-1 + I-2)",
   "",
