@@ -32,10 +32,26 @@
   benchmark n=800/p=100k：~208s→26.9s（×8），数值逐位一致；
   Stage 7.8 复跑结果与迁移前 bitwise 一致。
 
-## 下一步
+## Stage 8.2（2026-08-27，已完成）
 
-- Stage 8：正式 500-replicate simulation（按 05 模拟20260825.md 冻结参数，
-  经 run_sim.sh 启动）。
+- `inst/formal-simu/run-stage82.R`：Simulation I 正式 500 reps——I-0 null /
+  I-1 single / I-2 two_linked_trait_specific（r2=0.3，spve=0.020），paired
+  三 pipeline 严格配对，deterministic seed（master 20260826），per-rep RDS
+  checkpoint，每 50 reps 落 partial RDS + 进度打印，失败自动重试一次
+  （0 失败未触发）。经 `bash run_sim.sh stage82 ...` 启动，4 workers，
+  wall 14024s，峰值 RSS 104MB，**1500/1500 ok，0 numerical failure**。
+- `inst/formal-simu/analyze-stage82.R`：freeze §1.53 指标汇总。
+  关键结果：I-0 Type I 0.049（BH 达标）；I-1 full recovery 0.858、
+  attribution 0.951、direction 0.974；I-2 full/secondary recovery 0.778、
+  attribution 0.814、direction 0.820、marker FDP 0.051、
+  signal_count_exact 0.649、oracle-causal-set 0.98（49/50）；
+  extra provenance：novel_locus 350 / split_region 109 / within_locus 43。
+- 汇总：inst/formal-simu/output/stage82/summary.md（提交副本
+  inst/formal-simu/stage82-summary.md）；output/ 不进 git。
+- 注：evaluator 的 conditional_effect_* 仅 single-signal 模式有定义，I-2
+  报告 beta RMSE；I-1 marker FDP 0.071 略高于 0.05（相关检验下 BH 已知
+  现象，已在报告中注明）。
+- run-manifest.md 至今不存在（Stage 8.1/8.2 均以 freeze 文档为准）。
 
 ## Stage 8.1 pilot（2026-08-26，已完成）
 
