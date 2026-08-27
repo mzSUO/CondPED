@@ -83,3 +83,23 @@ temp/
 inst/validation/output/
 inst/validation/output/
 inst/formal-simu/output/
+
+
+# R 包编译产物
+*.o
+*.so
+*.dll
+src/*.o
+src/*.so
+
+# 模拟结果（很大，不进 git）
+inst/formal-simu/output/
+*.RDS
+*.rds
+
+# RStudio
+.Rproj.user
+.Rhistory
+
+# 系统文件
+.DS_Store
