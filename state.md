@@ -32,6 +32,23 @@
   benchmark n=800/p=100k：~208s→26.9s（×8），数值逐位一致；
   Stage 7.8 复跑结果与迁移前 bitwise 一致。
 
+## Stage 8.4（Simulation III，2026-08-30 完成）
+
+- 场景：E1 single_highly_representable（++++, rho=0.05, conforming loop）、
+  E2 single_nonredundant（runner 自然可行锥）、E3 linked_pseudo_multitrait
+  （r2=0.3, spve=0.020），paired 三 pipeline，R=500 × 3 = 1500 reps，
+  **1500/1500 ok，0 numerical failure**，wall 13695s，峰值 RSS 108MB。
+- E1 vs E2：cand_exact 0.459/0.580，rep_exact 0.855/0.578，eta bias
+  ~0.0003-0.0004，rho MAE 0.036/0.123，beta cov95 0.958/0.962，
+  Q-form 强度匹配 0.0800/0.0800（§1.17）；符号分布 E1 全 ++++，
+  E2 +--+ 45.2% / +-+- 54.6% / ++-- 0.2%（freeze v2 如实报告）。
+- **E3 主证据（freeze 1.27 conditional effect contamination）**：
+  真实 r2=0.302 下，causal1 对 Trait2 的 |污染| marginal 0.137 →
+  resolved 0.059 → oracle-conditional 0.046；reduction 67%（→conditional）
+  / 61%（→resolved）。trait-breadth inflation 仅作描述（lead 0.110 /
+  resolved 0.184 / pseudo rate 0.079）。
+- 产物：output/stage84/（不进 git）；提交副本 stage84-summary.md。
+
 ## Stage 8.3（Simulation II，2026-08-29 完成）
 
 - 场景：II-A（A1–A4, signal_oracle）+ II-B（R1/R3, signal_trait_oracle），
