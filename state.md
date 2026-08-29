@@ -111,3 +111,29 @@
 - 报告：inst/formal-simu/stage81-pilot-report.md（提交）；
   原始结果在 inst/formal-simu/output/stage81/（gitignored，不提交）。
 - 满足 freeze 硬性条件（0 numerical failure），可进入正式 500-rep。
+
+## Stage 8.5（汇总与冻结验收，2026-08-30 完成）
+
+- `inst/formal-simu/analyze-stage85.R`：汇总 stage82/83/84 全部 500-rep
+  结果，所有比例类估计附 Wilson 95% CI（n=500），连续指标附 MC SE；
+  主表 87 行（main_results_freeze.csv，提交副本 stage85-main-results.csv）。
+- Figure 数据表：F2 = E3 contamination 梯度（marginal 0.137 → resolved
+  0.059 → conditional 0.046，freeze §1.71/§1.27）；F3 = R1 vs R3 全指标
+  + 符号分布（§1.72）；F4 = E1/E2/E3 三 pipeline 对比（§1.73）。
+  指标分层按当前文档 §1.67/§1.68/§1.69 执行。
+- **Freeze Criteria（当前文档 §1.63.1–1.63.6）全部 PASS**：
+  PSD（pilot min eigen 0.16 + acceptance 全过）；0 rank-deficient /
+  0 numerical failure（1500+3000+1500 全 ok）；R1/R3 truth map 完整；
+  realized r2 0.302/0.300 ≈ 0.3；realized PVE 0.0200 ≈ 0.02、Q-form
+  匹配 0.0800/0.0800；pipeline 严格配对（seed 25/25×3、结构 25/25×2）。
+- 一致性核对：master_seed=20260826 体系三阶段一致（.seed_for_rep 逐点
+  验证 75/75）；paired 三 pipeline 结构一致（50/50）。
+- 报告：acceptance_report.md（提交副本 stage85-acceptance-report.md）；
+  output/stage85/ 不进 git。章节号引用均按当前 v2 文档核实（§1.63
+  criteria、§1.67–1.69 tiers、§1.71–1.73 figures、§1.64 pairing、
+  §1.27 E3、§1.16 v2 符号报告）。
+
+## 下一步（可选，待用户决定）
+
+- II-B-I4 supplementary（Sigma_P=I4 严格 ++++ R1/R3 对比，探测已证可行）。
+- Sensitivity 系列（n 梯度、spve 梯度、LD 梯度、rho 边界、q=3）。
