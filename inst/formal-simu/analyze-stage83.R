@@ -1,0 +1,282 @@
+## Stage 8.3 analysis: Simulation II formal 500 reps.
+## Freeze doc sections: 1.16 (R1/R3 fairness), 1.18 (truth engine),
+## 1.30-1.31 (II-A attribution, CondPED vs ASSET), 1.33-1.35 (II-B).
+## ASSET per freeze 1.35: association / trait subset / direction only
+## (no rho / Rep); run here from saved oracle-signal marginal effects
+## with Sigma_Z = cov2cor(Sigma_P_ref) — the package's own convention
+## (comparison-pipelines.R). No refitting; no production changes.
+devtools::load_all(quiet = TRUE)
+
+workers <- as.integer(Sys.getenv("STAGE83_WORKERS", "4"))
+out_dir <- "inst/formal-simu/output/stage83"
+final <- readRDS(file.path(out_dir, "manifest.rds"))
+grid <- read.csv(file.path(out_dir, "grid.csv"))
+runtime <- read.csv(file.path(out_dir, "runtime.csv"))
+retry_log <- tryCatch(read.csv(file.path(out_dir, "retry_log.csv")),
+                      error = function(e) data.frame())
+peak_kb <- suppressWarnings(as.numeric(readLines(
+  file.path(out_dir, "peak_rss_kb.txt"))))
+
+grid$key <- vapply(seq_len(nrow(grid)), function(i) {
+  CondPED:::.scenario_dir_key(CondPED:::.canonical_scenario_id(
+    c(as.list(grid[i, , drop = FALSE]), list(master_seed = 20260826L))))
+}, character(1))
+final$scenario <- grid$scenario[match(basename(dirname(final$file)),
+                                      grid$key)]
+trait_names <- paste0("Trait", 1:4)
+
+## ---- per-rep extraction ------------------------------------------------------
+rep_extract <- function(f) {
+  o <- readRDS(f)
+  if (is.null(o) || !isTRUE(o$status$ok)) return(NULL)
+  ev <- o$evaluation
+  truth <- o$truth
+  scen <- o$settings$architecture
+
+  ## truth-side architecture checks
+  tsets <- truth$candidate_traits
+  tdir <- truth$effect_direction
+  mrs <- truth$minimum_representative_sets
+  min_rep <- if (!is.null(mrs) && nrow(mrs) > 0L) {
+    min(vapply(split(mrs$set_size, mrs$signal_id), min, numeric(1)))
+  } else NA_integer_
+  truth_full_set <- all(vapply(tsets, function(s) {
+    setequal(s, trait_names)
+  }, logical(1)))
+  bq <- truth$beta$beta[truth$beta$beta != 0]
+  truth_concordant <- length(unique(sign(bq))) == 1L
+  strength <- if (!is.null(truth$realized_signal_pve)) {
+    mean(truth$realized_signal_pve$realized_marginal_signal_pve)
+  } else NA_real_
+
+  ## ASSET on the saved oracle-signal marginal effects
+  eff <- o$effect_estimates
+  asset_subset <- character()
+  asset_dir <- NA_character_
+  if (!is.null(eff) && nrow(eff) > 0L) {
+    sid <- eff$signal_id[1]
+    rw <- eff[eff$signal_id == sid, ]
+    b <- stats::setNames(rw$beta, rw$trait)[trait_names]
+    s <- stats::setNames(rw$se, rw$trait)[trait_names]
+    SZ <- cov2cor(o$Sigma_P_ref)
+    a <- CondPED:::.run_asset_comparison(
+      b, se = s, Sigma_Z = SZ, trait_names = trait_names,
+      sample_size = o$settings$n, backend = NULL)
+    asset_subset <- a$asset_best_subset
+    asset_dir <- CondPED:::.direction_from_betas(b[asset_subset],
+                                                 length(asset_subset))
+  }
+
+  data.frame(
+    scenario = scen, rep_id = o$rep_id,
+    ## CondPED (frozen evaluator)
+    cand_exact = ev$candidate_exact_recovery,
+    cand_precision = ev$candidate_precision,
+    cand_recall = ev$candidate_tpr,
+    cand_jaccard = ev$candidate_jaccard,
+    direction = ev$direction_recovery,
+    eta_bias = ev$conditional_effect_bias,
+    eta_rmse = ev$conditional_effect_rmse,
+    eta_sign = ev$conditional_effect_sign_accuracy,
+    rho_bias = ev$representation_loss_bias,
+    rho_rmse = ev$representation_loss_rmse,
+    rho_mae = ev$representation_loss_mae,
+    rho_map_mae = ev$representation_map_mae,
+    beta_coverage = ev$beta_coverage,
+    threshold_acc = ev$representation_threshold_accuracy,
+    rep_card = ev$rep_min_cardinality_recovery,
+    rep_exact = ev$rep_exact_family_recovery,
+    irr_recovery = ev$irr_family_recovery,
+    ## truth checks
+    min_rep_truth = min_rep,
+    truth_full_set = truth_full_set,
+    truth_concordant = truth_concordant,
+    strength = strength,
+    ## ASSET
+    asset_breadth = length(asset_subset),
+    asset_subset = paste(asset_subset, collapse = "+"),
+    asset_dir = asset_dir,
+    stringsAsFactors = FALSE
+  )
+}
+
+t0 <- Sys.time()
+files <- final$file[final$status == "ok"]
+if (.Platform$OS.type == "unix") {
+  rows <- parallel::mclapply(files, rep_extract, mc.cores = workers)
+} else {
+  rows <- lapply(files, rep_extract)
+}
+rows <- rows[!vapply(rows, is.null, logical(1))]
+d <- do.call(rbind, rows)
+write.csv(d, file.path(out_dir, "per_rep_metrics.csv"), row.names = FALSE)
+cat(sprintf("extracted %d reps in %.0fs\n", nrow(d),
+            difftime(Sys.time(), t0, units = "secs")))
+
+## ---- ASSET vs CondPED trait-set metrics (II-A, truth candidate sets) --------
+## direction: ASSET direction ok iff estimated signs on the selected traits
+## match the truth signs (works for antagonistic A3 as well)
+asset_cmp <- do.call(rbind, lapply(files, function(f) {
+  o <- readRDS(f)
+  if (is.null(o) || !isTRUE(o$status$ok)) return(NULL)
+  tset <- o$truth$candidate_traits[[1]]
+  if (is.null(tset)) return(NULL)
+  eff <- o$effect_estimates
+  sid <- eff$signal_id[1]
+  rw <- eff[eff$signal_id == sid, ]
+  b <- stats::setNames(rw$beta, rw$trait)[trait_names]
+  s <- stats::setNames(rw$se, rw$trait)[trait_names]
+  a <- CondPED:::.run_asset_comparison(
+    b, se = s, Sigma_Z = cov2cor(o$Sigma_P_ref), trait_names = trait_names,
+    sample_size = o$settings$n, backend = NULL)
+  trow <- o$truth$beta[o$truth$beta$signal_id == sid, ]
+  tsgn <- stats::setNames(sign(trow$beta), trow$trait)
+  aset <- a$asset_best_subset
+  tp <- length(intersect(aset, tset))
+  data.frame(
+    scenario = o$settings$architecture, rep_id = o$rep_id,
+    asset_exact = as.numeric(setequal(aset, tset)),
+    asset_precision = if (length(aset)) tp / length(aset) else NA_real_,
+    asset_recall = tp / length(tset),
+    asset_jaccard = tp / length(union(aset, tset)),
+    asset_dir_ok = if (length(aset) == 0L) NA_real_ else
+      as.numeric(all(sign(b[aset]) == tsgn[aset] | b[aset] == 0)),
+    stringsAsFactors = FALSE
+  )
+}))
+
+## ---- aggregates ----------------------------------------------------------------
+agg <- function(x) {
+  data.frame(
+    scenario = x$scenario[1], n = nrow(x),
+    cand_exact = mean(x$cand_exact, na.rm = TRUE),
+    cand_precision = mean(x$cand_precision, na.rm = TRUE),
+    cand_recall = mean(x$cand_recall, na.rm = TRUE),
+    cand_jaccard = mean(x$cand_jaccard, na.rm = TRUE),
+    direction = mean(x$direction, na.rm = TRUE),
+    eta_bias = mean(x$eta_bias, na.rm = TRUE),
+    eta_rmse = mean(x$eta_rmse, na.rm = TRUE),
+    rho_mae = mean(x$rho_mae, na.rm = TRUE),
+    rho_map_mae = mean(x$rho_map_mae, na.rm = TRUE),
+    beta_coverage95 = mean(x$beta_coverage, na.rm = TRUE),
+    threshold_acc = mean(x$threshold_acc, na.rm = TRUE),
+    rep_card = mean(x$rep_card, na.rm = TRUE),
+    rep_exact = mean(x$rep_exact, na.rm = TRUE),
+    irr_recovery = mean(x$irr_recovery, na.rm = TRUE),
+    asset_breadth = mean(x$asset_breadth, na.rm = TRUE),
+    stringsAsFactors = FALSE
+  )
+}
+summ <- do.call(rbind, lapply(split(d, d$scenario), agg))
+rownames(summ) <- NULL
+
+asset_agg <- do.call(rbind, lapply(split(asset_cmp, asset_cmp$scenario),
+                                   function(x) data.frame(
+  scenario = x$scenario[1], n = nrow(x),
+  asset_exact = mean(x$asset_exact, na.rm = TRUE),
+  asset_precision = mean(x$asset_precision, na.rm = TRUE),
+  asset_recall = mean(x$asset_recall, na.rm = TRUE),
+  asset_jaccard = mean(x$asset_jaccard, na.rm = TRUE),
+  asset_dir_ok = mean(x$asset_dir_ok, na.rm = TRUE))))
+rownames(asset_agg) <- NULL
+
+## ---- fairness / truth-map checks (freeze 1.16 / 1.18) --------------------------
+fair <- do.call(rbind, lapply(split(d, d$scenario), function(x) data.frame(
+  scenario = x$scenario[1], n = nrow(x),
+  truth_full_set_rate = mean(x$truth_full_set),
+  truth_concordant_rate = mean(x$truth_concordant),
+  min_rep_truth_min = min(x$min_rep_truth, na.rm = TRUE),
+  min_rep_truth_max = max(x$min_rep_truth, na.rm = TRUE),
+  mean_strength = mean(x$strength, na.rm = TRUE),
+  stringsAsFactors = FALSE)))
+rownames(fair) <- NULL
+
+write.csv(summ, file.path(out_dir, "summary_condped.csv"), row.names = FALSE)
+write.csv(asset_agg, file.path(out_dir, "summary_asset.csv"),
+          row.names = FALSE)
+write.csv(fair, file.path(out_dir, "fairness_checks.csv"), row.names = FALSE)
+
+## ---- summary.md ------------------------------------------------------------------
+n_ok <- sum(final$status == "ok")
+wall <- runtime$value[runtime$metric == "wall_seconds"]
+peak_mb <- if (length(peak_kb) && is.finite(peak_kb)) peak_kb / 1024 else NA
+r1 <- summ[summ$scenario == "highly_representable", ]
+r3 <- summ[summ$scenario == "strongly_nonredundant", ]
+f1 <- fair[fair$scenario == "highly_representable", ]
+f3 <- fair[fair$scenario == "strongly_nonredundant", ]
+
+fmt_row <- function(label, x) {
+  sprintf("| %s | %.3f | %.3f | %.3f | %.3f | %.3f |",
+          label, x$cand_exact, x$cand_precision, x$cand_recall,
+          x$cand_jaccard, x$direction)
+}
+fmt_row_a <- function(label, x) {
+  sprintf("| %s | %.3f | %.3f | %.3f | %.3f | %.3f |",
+          label, x$asset_exact, x$asset_precision, x$asset_recall,
+          x$asset_jaccard, x$asset_dir_ok)
+}
+scen_order <- c("trait_specific", "two_trait_concordant",
+                "two_trait_antagonistic", "broad_concordant")
+lines <- c(
+  "# Stage 8.3 Summary — Simulation II formal 500 reps",
+  "",
+  sprintf("- II-A: A1 trait_specific / A2 two_trait_concordant / A3 two_trait_antagonistic / A4 broad_concordant (signal_oracle)"),
+  sprintf("- II-B: R1 highly_representable (rho = 0.05) / R3 strongly_nonredundant (signal_trait_oracle)"),
+  sprintf("- R = 500 per scenario; %d/%d replicates ok; retries: %d",
+          n_ok, nrow(final), nrow(retry_log)),
+  sprintf("- wall time %.0f s; peak RSS %.0f MB; workers = 4", wall, peak_mb),
+  "",
+  "## II-A: CondPED vs ASSET trait-set comparison (freeze 1.31)",
+  "",
+  "CondPED (frozen evaluator):",
+  "",
+  "| scenario | exact | precision | recall | Jaccard | direction |",
+  "|---|---|---|---|---|---|",
+  vapply(scen_order, function(s) fmt_row(s, summ[summ$scenario == s, ]),
+         character(1)),
+  "",
+  "ASSET (subset reference; no rho/Rep per freeze 1.35):",
+  "",
+  "| scenario | exact | precision | recall | Jaccard | direction ok |",
+  "|---|---|---|---|---|---|",
+  vapply(scen_order, function(s) fmt_row_a(s, asset_agg[asset_agg$scenario == s, ]),
+         character(1)),
+  "",
+  "## II-B: representation structure (freeze 1.34)",
+  "",
+  "| scenario | eta bias | eta RMSE | rho MAE | rho map MAE | beta cov95 | thr-side acc | min Rep card | Rep exact | Irr recovery |",
+  "|---|---|---|---|---|---|---|---|---|---|",
+  sprintf("| R1 | %.4f | %.4f | %.4f | %.4f | %.3f | %.3f | %.3f | %.3f | %.3f |",
+          r1$eta_bias, r1$eta_rmse, r1$rho_mae, r1$rho_map_mae,
+          r1$beta_coverage95, r1$threshold_acc, r1$rep_card, r1$rep_exact,
+          r1$irr_recovery),
+  sprintf("| R3 | %.4f | %.4f | %.4f | %.4f | %.3f | %.3f | %.3f | %.3f | %.3f |",
+          r3$eta_bias, r3$eta_rmse, r3$rho_mae, r3$rho_map_mae,
+          r3$beta_coverage95, r3$threshold_acc, r3$rep_card, r3$rep_exact,
+          r3$irr_recovery),
+  "",
+  sprintf("ASSET breadth reference: R1 = %.2f, R3 = %.2f (CondPED min Rep: %.2f vs %.2f; truth: 1 vs 4).",
+          r1$asset_breadth, r3$asset_breadth, r1$rep_card, r3$rep_card),
+  "",
+  "Note: the frozen evaluator defines beta_coverage (effect estimates);",
+  "eta coverage95 is not an evaluator output and is therefore not reported.",
+  "",
+  "## Fairness / truth-map checks (freeze 1.16 / 1.18)",
+  "",
+  sprintf("- R1: full trait set %d/%d, concordant direction %d/%d, truth min Rep in [%d, %d], mean realized PVE %.4f",
+          sum(d$truth_full_set[d$scenario == "highly_representable"]), r1$n,
+          sum(d$truth_concordant[d$scenario == "highly_representable"]), r1$n,
+          f1$min_rep_truth_min, f1$min_rep_truth_max, f1$mean_strength),
+  sprintf("- R3: full trait set %d/%d, concordant direction %d/%d, truth min Rep in [%d, %d], mean realized PVE %.4f",
+          sum(d$truth_full_set[d$scenario == "strongly_nonredundant"]), r3$n,
+          sum(d$truth_concordant[d$scenario == "strongly_nonredundant"]), r3$n,
+          f3$min_rep_truth_min, f3$min_rep_truth_max, f3$mean_strength),
+  "- The simulator's acceptance loop regenerates any effect vector not",
+  "  satisfying the architecture conditions; violations above must be 0."
+)
+writeLines(lines, file.path(out_dir, "summary.md"))
+print(summ[, c("scenario", "n", "cand_exact", "direction", "rho_mae",
+               "rep_card", "rep_exact", "irr_recovery")], row.names = FALSE)
+print(asset_agg, row.names = FALSE)
+print(fair, row.names = FALSE)
+cat("STAGE83 ANALYSIS DONE\n")
