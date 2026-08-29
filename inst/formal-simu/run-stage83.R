@@ -302,6 +302,7 @@ for (spec in list(list("highly_representable", 0.05))) {
 ## ---- one automatic retry of failed replicates --------------------------------
 all_files <- list.files(out_dir, pattern = "^rep_[0-9]+\\.rds$",
                         recursive = TRUE, full.names = TRUE)
+all_files <- all_files[!grepl("r3_rejection_failed", all_files, fixed = TRUE)]
 st0 <- vapply(all_files, function(f) {
   o <- tryCatch(readRDS(f), error = function(e) NULL)
   if (is.null(o)) "corrupt" else if (isTRUE(o$status$ok)) "ok" else "failed"
@@ -367,6 +368,7 @@ write.csv(retry_log, file.path(out_dir, "retry_log.csv"), row.names = FALSE)
 ## ---- final manifest from disk -------------------------------------------------
 all_files <- list.files(out_dir, pattern = "^rep_[0-9]+\\.rds$",
                         recursive = TRUE, full.names = TRUE)
+all_files <- all_files[!grepl("r3_rejection_failed", all_files, fixed = TRUE)]
 final <- data.frame(
   file = all_files,
   status = vapply(all_files, function(f) {

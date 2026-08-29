@@ -32,6 +32,26 @@
   benchmark n=800/p=100k：~208s→26.9s（×8），数值逐位一致；
   Stage 7.8 复跑结果与迁移前 bitwise 一致。
 
+## Stage 8.3（Simulation II，2026-08-29 完成）
+
+- 场景：II-A（A1–A4, signal_oracle）+ II-B（R1/R3, signal_trait_oracle），
+  R=500 × 6 = 3000 reps，全部 ok，0 numerical failure。
+- **freeze constraint fix v2**（commit `e856d26`）：可行性探测发现 R1/R3
+  可行符号锥在冻结 Sigma_P_ref 下不相交（R1: ++++ 0.87；R3: +-+- 0.525 /
+  +--+ 0.47，交集为空）→ freeze 文档 §1.13/1.16/1.33/1.42/1.43 改为
+  "强度匹配 + 符号分布如实报告"；严格 ++++ 对比交由 I4 supplementary。
+  I4 探测：两架构 100% 接受、++++ 各 13%（可行，待用户决定是否正式跑）。
+- R1：500 个 concordant reps（可行锥主导模式，rejection 生成，
+  n_sim_attempts 记录）；R3：runner 无约束 500 reps（接受率 ~100%，
+  实际符号分布 +--+ 53.8% / +-+- 46.2%）。
+- 关键结果：II-A CondPED exact 0.784–0.940 vs ASSET exact
+  0.000–1.000（antagonistic ASSET 1.00 占优，broad ASSET 0.00）；
+  II-B R1 rep_exact 0.722 / R3 0.994；eta bias ~0.0003、rho MAE
+  0.035/0.055；Q-form 强度匹配 0.0800 vs 0.0800（§1.17 成立）。
+- 事故记录：retry 的递归 glob 误删 R3 rejection-failed 留档（已修
+  run-stage83.R 排除规则）；留档重建为 ARCHIVE.csv + 3 个确定性证据 RDS。
+- 产物：output/stage83/（不进 git）；提交副本 stage83-summary.md。
+
 ## Stage 8.2（2026-08-27，已完成）
 
 - `inst/formal-simu/run-stage82.R`：Simulation I 正式 500 reps——I-0 null /
