@@ -10,3 +10,11 @@
 
 - reference: main spve=0.020 at R=500 (Stage 8.2): secondary 0.778, full 0.778, extra 0.486
 - 结论核对点：secondary power 应随 spve 单调上升
+
+## 补充：严格匹配口径的 recovery（与 Stage 8.2 一致）
+
+| spve | full recovery | secondary recovery |
+|---|---|---|---|
+| 0.0075 | 0.470 | 0.470 |
+| 0.0150 | 0.665 | 0.665 |
+| 0.0175 | 0.770 | 0.770 |

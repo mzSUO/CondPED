@@ -147,3 +147,42 @@ stage9_key <- function(row, master_seed = stage9_master_seed) {
   CondPED:::.scenario_dir_key(CondPED:::.canonical_scenario_id(
     c(as.list(row), list(master_seed = master_seed))))
 }
+
+## Strict matching-based full/secondary recovery (Stage 8.2 convention):
+## regenerate the identical dataset per rep (deterministic seed) and match
+## truth vs estimated signals with the frozen .match_signals.
+stage9_strict_recovery <- function(files, workers = 4L) {
+  one <- function(f) {
+    o <- readRDS(f)
+    if (is.null(o) || !isTRUE(o$status$ok)) return(NULL)
+    s <- o$settings
+    args <- list(n = s$n, m = s$m, p = s$p, experiment = s$experiment,
+                 scenario = s$architecture, locus_pve = s$locus_pve,
+                 secondary_signal_pve = s$secondary_signal_pve,
+                 correlation = s$correlation, tolerance = s$tolerance)
+    for (fld in c("local_ld", "target_r2", "target_loss")) {
+      if (!is.null(s[[fld]]) && !is.na(s[[fld]])) args[[fld]] <- s[[fld]]
+    }
+    set.seed(o$seed)
+    sim <- do.call(simulate_condped_data, args)
+    G <- sim$G
+    truth <- sim$truth
+    position <- stats::setNames(seq_len(ncol(G)) * 1000, colnames(G))
+    mm <- CondPED:::.match_signals(
+      truth, list(signals = o$estimates$signals, positions = position), G = G)
+    n_truth <- nrow(truth$signals)
+    matched_truth <- unique(mm$matches$truth_signal_id)
+    full <- n_truth > 0L && nrow(mm$matches) >= n_truth &&
+      all(truth$signals$signal_id %in% matched_truth)
+    data.frame(full_recovery = full,
+               secondary_recovery = n_truth >= 2L && full,
+               n_extra = length(mm$extra), stringsAsFactors = FALSE)
+  }
+  if (.Platform$OS.type == "unix") {
+    out <- parallel::mclapply(files, one, mc.cores = workers)
+  } else {
+    out <- lapply(files, one)
+  }
+  out <- out[!vapply(out, is.null, logical(1))]
+  do.call(rbind, out)
+}
