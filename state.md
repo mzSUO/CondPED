@@ -137,3 +137,34 @@
 
 - II-B-I4 supplementary（Sigma_P=I4 严格 ++++ R1/R3 对比，探测已证可行）。
 - Sensitivity 系列（n 梯度、spve 梯度、LD 梯度、rho 边界、q=3）。
+
+## Stage 9（supplementary 系列，2026-08-31 完成）
+
+- 12 批全部完成，全部经 `bash run_sim.sh` 启动，workers=4，deterministic
+  seed（master 20260826），0 numerical failure，每批独立提交。
+- 批次与关键结论：
+  1. spve 梯度 {0.0075,0.015,0.0175}（§1.56）：secondary power 单调
+     0.48/0.68/0.82；严格匹配 recovery 0.47/0.67/0.77
+  2. n 梯度 {500,750,1250}（§1.55）：严格 recovery 0.155/0.49/0.945 单调
+  3. r2 梯度 {0.1,0.3,0.5,0.7}（§1.57+§1.27）：marginal contamination 单调
+     0.077/0.137/0.179/0.182，conditional 一致更低；target 0.7 实测上限 0.61
+     （copula 饱和，已注明）
+  4. rho {0.02,0.08}（§1.59.1）：rep_exact 0.930/0.465（主 0.05→0.722），
+     越近 tau 越低——threshold 机制
+  5. tau {0.20}（§1.59）：rep_exact 0.995；tau=0.05 格结构性不可行
+     （R1 要求 rho<tau，200/200 失败，留档 tau005_infeasible_evidence/）
+  6. boundary rho* {0.08,0.10,0.12}（§1.60）：P(越界) 0.535@0.08；
+     0.10/0.12 全部生成失败（架构不存在，结构性事实）
+  7. q=3（§1.61）：200/200 ok，locus detection 0.995，计算稳定
+  8. I-3 + E4（§1.24/§1.46）：400/400 ok
+  9. Sigma_P=I4（§1.58）：200/200 ok；pseudo rate 0.257；attribution 在
+     I4 下显著更难（cand_exact 0.505 vs block 0.814）
+  10. R2（§1.14）：200/200 ok，rep_exact 0.910，居 R1/R3 之间
+  11. FDP 校准（§1.52）：600/600 ok；marker FDP mixed 0.044 [0.040,0.049]
+      符合 BH 目标
+  12. II-B-I4 严格同符号（§1.58 扩展，已批准）：1000/1000 ok；接受率
+      0.119/0.127 ≈ 探测值 0.13；严格 ++++ 下 R1 rep_exact 0.740 vs R3 0.790
+- 总汇总：inst/formal-simu/output/stage9/summary.md（提交副本
+  inst/formal-simu/stage9-summary.md）
+- 基础设施修复：lib-stage9.R sampler 非阻塞收尾；run_sim.sh 已为
+  --user scope 版本
